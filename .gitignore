@@ -1,0 +1,66 @@
+# Django #
+*.log
+*.pot
+*.pyc
+__pycache__/
+local_settings.py
+
+# If you are using Windows:
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Python #
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+*.pyo
+
+# Virtual Environment #
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Django Stuff #
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+
+# Environment Variables #
+.env
+.env.*
+
+# VS Code #
+.vscode/
+
+# macOS #
+.DS_Store
+
+# MyPy #
+.mypy_cache/
+
+# Pytest #
+.pytest_cache/
+
+# Coverage #
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pyre/
+
+# PyCharm #
+.idea/
+
+# Docker #
+*.swp
