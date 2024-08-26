@@ -1,11 +1,13 @@
 from rest_framework import generics
 from .models import Resource
 from .serializers import ResourceSerializer
+from users.permissions import IsAdminOrInstructor
 
-class ResourceListView(generics.ListCreateAPIView):
+class ResourceCreateView(generics.CreateAPIView):
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer
+    permission_classes = [IsAdminOrInstructor]
 
-class ResourceDetailView(generics.RetrieveUpdateDestroyAPIView):
+class ResourceListView(generics.ListAPIView):
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer

@@ -1,7 +1,9 @@
 from django.contrib import admin
-from .models import PerformanceStatistics, BeltExam, EventParticipation, Discipline
+from .models import Discipline, EvaluationParameter, BeltExam, EventParticipation, PerformanceStatistics, ExamParameterScore
 
-admin.site.register(PerformanceStatistics)
+admin.site.register(Discipline)
+admin.site.register(EvaluationParameter)
 admin.site.register(BeltExam)
 admin.site.register(EventParticipation)
-admin.site.register(Discipline)
+admin.site.register(PerformanceStatistics)
+admin.site.register(ExamParameterScore)

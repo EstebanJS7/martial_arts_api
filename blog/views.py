@@ -1,7 +1,7 @@
 from rest_framework import generics
 from .models import BlogPost, Comment, Rating
 from .serializers import BlogPostSerializer, CommentSerializer, RatingSerializer
-from ..users.permissions import IsAuthorOrAdmin
+from users.permissions import IsAuthorOrAdmin
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
 class BlogPostListView(generics.ListCreateAPIView):
