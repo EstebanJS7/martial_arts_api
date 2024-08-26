@@ -9,7 +9,7 @@ class BlogPostSerializer(serializers.ModelSerializer):
 class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
-        fields = ['id', 'blog_post', 'author', 'content', 'created_at']
+        fields = ['id', 'blog_post', 'user', 'content', 'created_at']
         read_only_fields = ['author', 'created_at']
 
 class RatingSerializer(serializers.ModelSerializer):

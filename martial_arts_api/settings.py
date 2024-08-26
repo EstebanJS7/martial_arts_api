@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'performance',
     'rest_framework_simplejwt.token_blacklist',
     'django_filters',
+    'drf_yasg',
 ]
 
 MIDDLEWARE = [
