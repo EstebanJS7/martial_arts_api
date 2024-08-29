@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 from datetime import date
 
 class CurrentQuota(models.Model):
@@ -10,7 +10,7 @@ class CurrentQuota(models.Model):
         return f"Current Quota: {self.amount} effective from {self.effective_date}"
 
 class Payment(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     date_payment = models.DateTimeField(auto_now_add=True)  # Renombrado a date_payment
     description = models.CharField(max_length=255, blank=True, null=True)

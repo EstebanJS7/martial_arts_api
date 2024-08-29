@@ -2,7 +2,17 @@ from django.db import models
 
 # Create your models here.
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+class CustomUser(AbstractUser):
+    email = models.EmailField(unique=True, blank=False, null=False)
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+
+    def __str__(self):
+        return self.email
 
 class UserProfile(models.Model):
     ROLE_CHOICES = (
@@ -10,7 +20,9 @@ class UserProfile(models.Model):
         ('instructor', 'Instructor'),
         ('student', 'Student'),
     )
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    first_name = models.CharField(max_length=50, blank=True, null=True)  # Campo para el nombre
+    last_name = models.CharField(max_length=50, blank=True, null=True)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='student')
     belt_rank = models.CharField(max_length=50)  
     dojo = models.CharField(max_length=100) 

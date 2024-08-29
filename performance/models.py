@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 
 class Discipline(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -15,7 +15,7 @@ class EvaluationParameter(models.Model):
         return self.name
 
 class BeltExam(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='belt_exams')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='belt_exams')
     belt_level = models.CharField(max_length=50)  # Ejemplo: "Black Belt"
     exam_date = models.DateField()
     parameters_evaluated = models.ManyToManyField(EvaluationParameter, through='ExamParameterScore', related_name='belt_exams')  # Relación ManyToMany a través de un modelo intermedio
@@ -44,7 +44,7 @@ class EventParticipation(models.Model):
         ('Third Place', 'Third Place'),
         ('Exhibition', 'Exhibition'),
     ]
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='event_participations')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='event_participations')
     event_name = models.CharField(max_length=200)
     disciplines = models.ManyToManyField(Discipline, related_name='event_participations')
     category = models.CharField(max_length=20, choices=EVENT_CATEGORIES)
@@ -59,7 +59,7 @@ class EventParticipation(models.Model):
         return f"{self.user.username} - {self.event_name} ({self.category})"
 
 class PerformanceStatistics(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     classes_attended = models.IntegerField(default=0)
     belt_exams = models.ManyToManyField(BeltExam, related_name='performance_statistics', blank=True)
     event_participations = models.ManyToManyField(EventParticipation, related_name='performance_statistics', blank=True)

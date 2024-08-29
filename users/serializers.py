@@ -1,9 +1,10 @@
 from rest_framework import serializers
-from .models import UserProfile
-from django.contrib.auth.models import User
+from .models import UserProfile, CustomUser
 from django.contrib.auth.password_validation import validate_password
 from rest_framework.validators import UniqueValidator
+from django.contrib.auth import get_user_model, authenticate
 
+User = get_user_model()
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
@@ -14,6 +15,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         required=True,
         validators=[UniqueValidator(queryset=User.objects.all())]
     )
+    first_name = serializers.CharField(required=True)
+    last_name = serializers.CharField(required=True)
     password = serializers.CharField(
         write_only=True, required=True, validators=[validate_password]
     )
@@ -26,8 +29,8 @@ class RegisterSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(required=True)
 
     class Meta:
-        model = User
-        fields = ('username', 'email', 'password', 'password2', 'dojo', 'belt_rank', 'city', 'address', 'phone_number')
+        model = CustomUser
+        fields = ('email', 'first_name', 'last_name', 'password', 'password2', 'dojo', 'belt_rank', 'city', 'address', 'phone_number')
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
@@ -35,16 +38,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        user = User.objects.create(
-            username=validated_data['username'],
+        user = CustomUser.objects.create(
             email=validated_data['email']
         )
         user.set_password(validated_data['password'])
         user.save()
-
         # Crear el UserProfile asociado
         UserProfile.objects.create(
             user=user,
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name'],
             dojo=validated_data['dojo'],
             belt_rank=validated_data['belt_rank'],
             city=validated_data['city'],
@@ -58,3 +61,26 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_staff']
+
+class CustomAuthTokenSerializer(serializers.Serializer):
+    email = serializers.EmailField(label="Email")
+    password = serializers.CharField(
+        label="Password",
+        style={'input_type': 'password'},
+        trim_whitespace=False
+    )
+
+    def validate(self, attrs):
+        email = attrs.get('email')
+        password = attrs.get('password')
+
+        if email and password:
+            user = authenticate(request=self.context.get('request'),
+                                username=email, password=password)
+            if not user:
+                raise serializers.ValidationError('Invalid credentials', code='authorization')
+        else:
+            raise serializers.ValidationError('Must include "email" and "password"', code='authorization')
+
+        attrs['user'] = user
+        return attrs

@@ -4,6 +4,6 @@ from .models import Discipline, EvaluationParameter, BeltExam, EventParticipatio
 admin.site.register(Discipline)
 admin.site.register(EvaluationParameter)
 admin.site.register(BeltExam)
+admin.site.register(ExamParameterScore)
 admin.site.register(EventParticipation)
 admin.site.register(PerformanceStatistics)
-admin.site.register(ExamParameterScore)

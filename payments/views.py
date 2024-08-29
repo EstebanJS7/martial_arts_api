@@ -1,5 +1,5 @@
 from rest_framework import generics
-from .models import Payment, CurrentQuota
+from .models import Payment
 from .serializers import PaymentSerializer
 from users.permissions import IsAdminUser
 from django_filters import rest_framework as filters
