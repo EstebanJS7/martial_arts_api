@@ -53,7 +53,7 @@ class Payment(models.Model):
         return 0
 
     def __str__(self):
-        return f"{self.user.username} - {self.amount} - {'Due' if self.is_due() else 'Paid'}"
+        return f"{self.user.email} - {self.amount} - {'Due' if self.is_due() else 'Paid'}"
 
     def is_due(self):
         # Verifica si el pago está vencido

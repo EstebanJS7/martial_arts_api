@@ -27,7 +27,7 @@ class BeltExam(models.Model):
         verbose_name_plural = "Belt Exams"
 
     def __str__(self):
-        return f"{self.user.username} - {self.belt_level} exam on {self.exam_date}"
+        return f"{self.user.email} - {self.belt_level} exam on {self.exam_date}"
 
 class ExamParameterScore(models.Model):
     exam = models.ForeignKey(BeltExam, on_delete=models.CASCADE)
@@ -56,7 +56,7 @@ class EventParticipation(models.Model):
         verbose_name_plural = "Event Participations"
 
     def __str__(self):
-        return f"{self.user.username} - {self.event_name} ({self.category})"
+        return f"{self.user.email} - {self.event_name} ({self.category})"
 
 class PerformanceStatistics(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -70,7 +70,7 @@ class PerformanceStatistics(models.Model):
         verbose_name_plural = "Performance Statistics"
 
     def __str__(self):
-        return f"Performance stats for {self.user.username}"
+        return f"Performance stats for {self.user.email}"
 
     def update_statistics(self):
         """ Utility method to update statistics based on exams and events """

@@ -19,4 +19,4 @@ class UserClassReservation(models.Model):
         unique_together = ('user', 'class_reserved')
 
     def __str__(self):
-        return f'{self.user.username} - {self.class_reserved.name}'
+        return f'{self.user.email} - {self.class_reserved.name}'

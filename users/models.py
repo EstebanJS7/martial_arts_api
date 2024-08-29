@@ -7,6 +7,7 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 class CustomUser(AbstractUser):
+    username = None 
     email = models.EmailField(unique=True, blank=False, null=False)
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -42,4 +43,4 @@ class UserProfile(models.Model):
     social_media_links = models.JSONField(blank=True, null=True)
     
     def __str__(self):
-        return self.user.username
+        return self.user.email

@@ -17,7 +17,7 @@ class Comment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Comment by {self.user.username} on {self.blog_post.title}"
+        return f"Comment by {self.user.email} on {self.blog_post.title}"
     
 class Rating(models.Model):
     blog_post = models.ForeignKey(BlogPost, on_delete=models.CASCADE, related_name='ratings')
@@ -29,4 +29,4 @@ class Rating(models.Model):
         unique_together = ('blog_post', 'user')
 
     def __str__(self):
-        return f"Rating by {self.user.username} on {self.blog_post.title}: {self.score}"
+        return f"Rating by {self.user.email} on {self.blog_post.title}: {self.score}"
