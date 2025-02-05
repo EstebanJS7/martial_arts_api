@@ -7,33 +7,32 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 class BlogPostListView(generics.ListCreateAPIView):
     queryset = BlogPost.objects.all()
     serializer_class = BlogPostSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        # Asigna el usuario autenticado como autor del BlogPost
+        serializer.save(author=self.request.user)
 
 class BlogPostDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = BlogPost.objects.all()
     serializer_class = BlogPostSerializer
     permission_classes = [IsAuthorOrAdmin]
 
-class BlogPostCreateView(generics.CreateAPIView):
-    queryset = BlogPost.objects.all()
-    serializer_class = BlogPostSerializer
-    permission_classes = [IsAuthenticated]
+# Se elimina BlogPostCreateView para evitar redundancia
 
-    def perform_create(self, serializer):
-        serializer.save(author=self.request.user)        
-    
 class CommentView(generics.ListCreateAPIView):
-    queryset = Comment.objects.all()
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
+        # Filtra los comentarios del BlogPost especificado por pk en la URL
         return Comment.objects.filter(blog_post_id=self.kwargs['pk'])
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user, blog_post_id=self.kwargs['pk'])
+        # Corrige el nombre del campo: usa 'user' en lugar de 'author'
+        serializer.save(user=self.request.user, blog_post_id=self.kwargs['pk'])
 
 class RatingView(generics.CreateAPIView):
-    queryset = Rating.objects.all()
     serializer_class = RatingSerializer
     permission_classes = [IsAuthenticated]
 

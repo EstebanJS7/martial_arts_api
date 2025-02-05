@@ -12,11 +12,15 @@ from .throttling import LoginRateThrottle
 from .serializers import UserSerializer 
 from .permissions import IsAdminUser
 from .forms import EmailAuthenticationForm
+from payments.models import Payment
 # Create your views here.
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
-    queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user.userprofile
     
 
 class RegisterView(generics.CreateAPIView):
@@ -24,6 +28,13 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = (AllowAny,)
     serializer_class = RegisterSerializer
     
+    def perform_create(self, serializer):
+        # Crear el usuario
+        user = serializer.save()
+
+        # Crear pagos automáticos para el usuario hasta fin de año
+        Payment.create_payments_for_remaining_year(user)
+        
 class LoginView(APIView):
     throttle_classes = [LoginRateThrottle]
     permission_classes = (AllowAny,)

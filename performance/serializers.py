@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import PerformanceStatistics, BeltExam, EventParticipation, EvaluationParameter, ExamParameterScore
+from .models import PerformanceStatistics, BeltExam, EventParticipation, EvaluationParameter, ExamParameterScore, Discipline
 
 class EvaluationParameterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -7,14 +7,22 @@ class EvaluationParameterSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description']
 
 class ExamParameterScoreSerializer(serializers.ModelSerializer):
-    parameter = EvaluationParameterSerializer()
+    # Para escritura, se acepta únicamente el ID del parámetro
+    parameter = serializers.PrimaryKeyRelatedField(queryset=EvaluationParameter.objects.all())
 
     class Meta:
         model = ExamParameterScore
         fields = ['id', 'exam', 'parameter', 'score']
+    
+    def to_representation(self, instance):
+        """ Representa el parámetro de forma anidada usando EvaluationParameterSerializer """
+        rep = super().to_representation(instance)
+        rep['parameter'] = EvaluationParameterSerializer(instance.parameter).data
+        return rep
 
 class BeltExamSerializer(serializers.ModelSerializer):
-    parameters_evaluated = ExamParameterScoreSerializer(many=True)  # Ahora permite crear y actualizar puntuaciones de parámetros
+    # Se usa el serializer anterior para manejar la creación y actualización de las puntuaciones
+    parameters_evaluated = ExamParameterScoreSerializer(many=True)
 
     class Meta:
         model = BeltExam
@@ -36,10 +44,14 @@ class BeltExamSerializer(serializers.ModelSerializer):
 
         # Actualizar o crear las puntuaciones de parámetros
         for parameter_data in parameters_data:
-            parameter_id = parameter_data.get('parameter').id
+            parameter_obj = parameter_data.get('parameter')
+            # Si se envía como diccionario, se extrae el id; si no, se asume que es una instancia
+            if isinstance(parameter_obj, dict):
+                parameter_id = parameter_obj.get('id')
+            else:
+                parameter_id = parameter_obj.id
             score = parameter_data.get('score')
-
-            exam_parameter_score, created = ExamParameterScore.objects.update_or_create(
+            ExamParameterScore.objects.update_or_create(
                 exam=instance,
                 parameter_id=parameter_id,
                 defaults={'score': score},
@@ -47,10 +59,11 @@ class BeltExamSerializer(serializers.ModelSerializer):
         return instance
 
 class EventParticipationSerializer(serializers.ModelSerializer):
+    # Se permite la asignación de disciplinas mediante su nombre
     disciplines = serializers.SlugRelatedField(
         many=True,
-        read_only=True,
-        slug_field='name'
+        slug_field='name',
+        queryset=Discipline.objects.all()
     )
 
     class Meta:

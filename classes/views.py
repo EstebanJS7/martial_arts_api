@@ -26,6 +26,7 @@ class UserClassReservationCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         class_reserved = serializer.validated_data['class_reserved']
+        # Verificar si la cantidad de reservas alcanzó el límite de estudiantes permitidos
         if class_reserved.userclassreservation_set.count() >= class_reserved.max_students:
-            raise ValidationError("This class is fully booked.")
+            raise ValidationError("Esta clase está completamente reservada.")
         serializer.save(user=self.request.user)

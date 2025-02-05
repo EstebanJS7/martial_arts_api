@@ -18,7 +18,11 @@ class BeltExam(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='belt_exams')
     belt_level = models.CharField(max_length=50)  # Ejemplo: "Black Belt"
     exam_date = models.DateField()
-    parameters_evaluated = models.ManyToManyField(EvaluationParameter, through='ExamParameterScore', related_name='belt_exams')  # Relación ManyToMany a través de un modelo intermedio
+    parameters_evaluated = models.ManyToManyField(
+        EvaluationParameter,
+        through='ExamParameterScore',
+        related_name='belt_exams'
+    )
     passed = models.BooleanField(default=False)
 
     class Meta:
@@ -73,7 +77,10 @@ class PerformanceStatistics(models.Model):
         return f"Performance stats for {self.user.email}"
 
     def update_statistics(self):
-        """ Utility method to update statistics based on exams and events """
+        """
+        Actualiza las estadísticas basadas en las reservas de clases, exámenes de cinturón
+        y participaciones en eventos del usuario.
+        """
         self.classes_attended = self.user.userclassreservation_set.count()
         self.belt_exams.set(self.user.belt_exams.all())
         self.event_participations.set(self.user.event_participations.all())

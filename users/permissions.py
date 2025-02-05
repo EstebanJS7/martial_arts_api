@@ -2,51 +2,60 @@ from rest_framework import permissions
 
 class IsAdminUser(permissions.BasePermission):
     """
-    Custom permission to only allow admins to access certain views.
+    Permiso personalizado para permitir el acceso solo a administradores.
     """
     def has_permission(self, request, view):
-        return request.user and request.user.userprofile.role == 'admin'
+        try:
+            return request.user and request.user.userprofile.role == 'admin'
+        except AttributeError:
+            return False
 
 class IsInstructorUser(permissions.BasePermission):
     """
-    Custom permission to only allow instructors to access certain views.
+    Permiso personalizado para permitir el acceso solo a instructores.
     """
     def has_permission(self, request, view):
-        return request.user and request.user.userprofile.role == 'instructor'
-    
+        try:
+            return request.user and request.user.userprofile.role == 'instructor'
+        except AttributeError:
+            return False
+
 class IsAdminOrInstructor(permissions.BasePermission):
     """
-    Custom permission to allow access to admins and instructors.
+    Permiso personalizado para permitir el acceso a administradores e instructores.
     """
     def has_permission(self, request, view):
-        return request.user and request.user.userprofile.role in ['admin', 'instructor']
-    
+        try:
+            return request.user and request.user.userprofile.role in ['admin', 'instructor']
+        except AttributeError:
+            return False
+
 class IsOwnerOrReadOnly(permissions.BasePermission):
     """
-    Object-level permission to only allow owners of an object to edit it.
-    Assumes the model instance has an 'owner' attribute.
+    Permiso a nivel de objeto para permitir que solo el propietario pueda editarlo.
+    Se asume que la instancia del modelo tiene un atributo 'user' que identifica al propietario.
     """
     def has_object_permission(self, request, view, obj):
-        # Permiso de solo lectura para cualquier solicitud segura
+        # Permiso de solo lectura para solicitudes seguras
         if request.method in permissions.SAFE_METHODS:
             return True
 
         # Permiso de escritura solo para el propietario del objeto
         return obj.user == request.user
-    
+
 class IsAuthorOrAdmin(permissions.BasePermission):
     """
-    Custom permission to only allow authors of a blog post to edit or delete it.
-    Admins have full access.
+    Permiso personalizado para permitir que solo el autor de un blog post o un administrador
+    puedan editar o eliminar el post.
     """
     def has_object_permission(self, request, view, obj):
-        # SAFE_METHODS are GET, HEAD or OPTIONS
+        # Permitir acceso en métodos seguros (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             return True
 
-        # Admins have full access
+        # Los administradores tienen acceso completo
         if request.user.is_staff:
             return True
 
-        # Only authors can edit or delete their own posts
+        # Solo el autor puede editar o eliminar su propio blog post
         return obj.author == request.user

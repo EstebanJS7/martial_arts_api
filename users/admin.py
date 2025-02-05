@@ -3,6 +3,10 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import UserProfile, CustomUser
 from .forms import CustomUserCreationForm, CustomUserChangeForm
 
+class UserProfileInline(admin.StackedInline):
+    model = UserProfile
+    can_delete = False
+
 class CustomUserAdmin(BaseUserAdmin):
     add_form = CustomUserCreationForm
     form = CustomUserChangeForm

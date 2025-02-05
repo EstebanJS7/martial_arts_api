@@ -1,8 +1,13 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from .models import PerformanceStatistics, BeltExam, EventParticipation, EvaluationParameter, ExamParameterScore
-from .serializers import (PerformanceStatisticsSerializer, BeltExamSerializer, 
-                          EventParticipationSerializer, EvaluationParameterSerializer, ExamParameterScoreSerializer)
+from .serializers import (
+    PerformanceStatisticsSerializer, 
+    BeltExamSerializer, 
+    EventParticipationSerializer, 
+    EvaluationParameterSerializer, 
+    ExamParameterScoreSerializer
+)
 
 # Vistas para los parámetros de evaluación
 class EvaluationParameterListCreateView(generics.ListCreateAPIView):

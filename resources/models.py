@@ -7,5 +7,9 @@ class Resource(models.Model):
     uploaded_at = models.DateTimeField(auto_now_add=True)
     category = models.CharField(max_length=100, blank=True)
 
+    class Meta:
+        verbose_name = "Recurso"
+        verbose_name_plural = "Recursos"
+
     def __str__(self):
         return self.title
