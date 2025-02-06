@@ -1,4 +1,4 @@
-from rest_framework import generics
+from rest_framework import generics, permissions
 from .models import Payment, QuotaConfig
 from .serializers import PaymentSerializer, QuotaConfigSerializer
 from users.permissions import IsAdminUser
@@ -14,6 +14,14 @@ class PaymentListView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
     filter_backends = [filters.DjangoFilterBackend]
     filterset_class = PaymentFilter
+    
+class UserPaymentListView(generics.ListAPIView):
+    serializer_class = PaymentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Retorna solo los pagos del usuario autenticado
+        return Payment.objects.filter(user=self.request.user)
 
 class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Payment.objects.all()

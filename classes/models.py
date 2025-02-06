@@ -16,6 +16,10 @@ class Class(models.Model):
     date = models.DateTimeField()
     max_students = models.IntegerField()
 
+    class Meta: 
+        verbose_name = "Clase"
+        verbose_name_plural = "Clases"
+
     def __str__(self):
         return self.name
 

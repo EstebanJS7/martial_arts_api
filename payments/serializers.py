@@ -11,3 +11,4 @@ class QuotaConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuotaConfig
         fields = '__all__'
+

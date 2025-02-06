@@ -6,17 +6,26 @@ def create_next_month_payment(user):
     """
     Crea el pago para el próximo mes de un usuario.
     """
-    current_quota = QuotaConfig.objects.latest('id')
-    today = date.today()
-    next_month = today.month + 1 if today.month < 12 else 1
-    year = today.year if today.month < 12 else today.year + 1
-    due_date = date(year, next_month, current_quota.due_day)
-    payment = Payment.objects.create(
-        user=user,
-        amount=current_quota.amount,
-        due_date=due_date
-    )
-    return payment
+    try:
+        current_quota = QuotaConfig.objects.latest('id')
+        today = date.today()
+        next_month = today.month + 1 if today.month < 12 else 1
+        year = today.year if today.month < 12 else today.year + 1
+        due_date = date(year, next_month, current_quota.due_day)
+        payment = Payment.objects.create(
+            user=user,
+            amount=current_quota.amount,
+            due_date=due_date
+        )
+        return payment
+    except QuotaConfig.DoesNotExist:
+        # Log the error or handle it appropriately (e.g., raise an exception)
+        print("Error: No QuotaConfig found.")  # Or use a proper logger
+        return None  # Or raise an exception
+    except Exception as e:
+        # Log the error
+        print(f"Error creating payment: {e}") # Or use a proper logger
+        return None # Or raise the exception
 
 def check_user_due_status(user):
     """
