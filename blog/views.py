@@ -2,7 +2,7 @@ from rest_framework import generics
 from .models import BlogPost, Comment, Rating
 from .serializers import BlogPostSerializer, CommentSerializer, RatingSerializer
 from users.permissions import IsAuthorOrAdmin
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.conf import settings
@@ -53,3 +53,30 @@ class RatingView(generics.CreateAPIView):
 
     def get_queryset(self):
         return Rating.objects.filter(blog_post_id=self.kwargs['pk'], user=self.request.user)
+
+class FeaturedBlogPostsView(generics.ListAPIView):
+    """
+    Vista para obtener las entradas destacadas del blog.
+    """
+    serializer_class = BlogPostSerializer
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        # Obtener las 3 entradas más recientes que estén marcadas como destacadas
+        # Si no hay suficientes destacadas, completar con las más recientes
+        featured_posts = BlogPost.objects.filter(
+            is_featured=True
+        ).order_by('-created_at')[:3]
+        
+        # Si no hay suficientes posts destacados, completar con los más recientes
+        if featured_posts.count() < 3:
+            # Excluir los posts que ya están en featured_posts
+            featured_ids = [post.id for post in featured_posts]
+            recent_posts = BlogPost.objects.exclude(
+                id__in=featured_ids
+            ).order_by('-created_at')[:3 - featured_posts.count()]
+            
+            # Combinar los queryset
+            featured_posts = list(featured_posts) + list(recent_posts)
+        
+        return featured_posts

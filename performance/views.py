@@ -18,6 +18,7 @@ from .serializers import (
 )
 from users.permissions import IsAdminUser, IsInstructorUser  # Se asume que existen
 from martial_arts_api.pagination import StandardResultsSetPagination, SmallResultsSetPagination
+from django.utils import timezone
 
 # --- Endpoints para EvaluationParameter ---
 
@@ -119,3 +120,105 @@ class PerformanceStatisticsView(generics.RetrieveAPIView):
         return PerformanceStatistics.objects.select_related('user').filter(
             user=self.request.user
         )
+
+class UserPerformanceStatsView(APIView):
+    """
+    Vista para obtener las estadísticas de desempeño del usuario autenticado.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        # Obtener el nivel de habilidad del usuario
+        try:
+            skill_level = user.userprofile.skill_level
+        except:
+            skill_level = "Principiante"
+        
+        # Obtener estadísticas de asistencia
+        # Suponemos que hay un modelo que registra la asistencia a clases
+        from classes.models import UserClassReservation
+        
+        # Total de clases a las que ha asistido
+        attended_classes = UserClassReservation.objects.filter(
+            user=user,
+            is_cancelled=False,
+            class_instance__date__lt=timezone.now().date()
+        ).count()
+        
+        # Total de clases programadas en el pasado
+        from classes.models import Class
+        total_classes = UserClassReservation.objects.filter(
+            user=user,
+            class_instance__date__lt=timezone.now().date()
+        ).count()
+        
+        # Calcular tasa de asistencia
+        attendance_rate = 0
+        if total_classes > 0:
+            attendance_rate = (attended_classes / total_classes) * 100
+        
+        # Obtener logros del usuario
+        achievements = []
+        user_exam_results = ExamResult.objects.filter(student=user).order_by('-exam_session__date')
+        
+        for result in user_exam_results[:3]:  # Mostrar solo los 3 más recientes
+            achievements.append({
+                'id': result.id,
+                'title': f"Examen de {result.exam_session.title}",
+                'description': f"Calificación: {result.final_score}/100",
+                'dateEarned': result.exam_session.date.strftime('%Y-%m-%d'),
+                'icon': 'trophy'  # Icono por defecto
+            })
+        
+        # Obtener progreso por categoría
+        progress_categories = []
+        
+        # Obtener parámetros de evaluación agrupados por categoría
+        categories = EvaluationParameter.objects.values_list('category', flat=True).distinct()
+        
+        for category in categories:
+            # Obtener el último resultado de examen para esta categoría
+            parameters = EvaluationParameter.objects.filter(category=category)
+            
+            if parameters.exists() and user_exam_results.exists():
+                latest_result = user_exam_results.first()
+                
+                # Calcular el promedio de puntuación para esta categoría
+                parameter_scores = []
+                max_level = 0
+                
+                for param in parameters:
+                    try:
+                        score = ParameterScore.objects.get(
+                            exam_result=latest_result,
+                            parameter=param
+                        ).score
+                        parameter_scores.append(score)
+                        max_level = max(max_level, 5)  # Suponemos que el nivel máximo es 5
+                    except ParameterScore.DoesNotExist:
+                        pass
+                
+                if parameter_scores:
+                    avg_score = sum(parameter_scores) / len(parameter_scores)
+                    level = int(avg_score / 20)  # Convertir puntuación (0-100) a nivel (0-5)
+                    
+                    progress_categories.append({
+                        'category': category,
+                        'level': level,
+                        'maxLevel': max_level,
+                        'percentage': avg_score
+                    })
+        
+        # Construir respuesta
+        response_data = {
+            'attendedClasses': attended_classes,
+            'totalClasses': total_classes,
+            'attendanceRate': round(attendance_rate, 2),
+            'skillLevel': skill_level,
+            'achievements': achievements,
+            'progressByCategory': progress_categories
+        }
+        
+        return Response(response_data)

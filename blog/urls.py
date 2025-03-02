@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import BlogPostListView, BlogPostDetailView, CommentView, RatingView
+from .views import BlogPostListView, BlogPostDetailView, CommentView, RatingView, FeaturedBlogPostsView
 
 urlpatterns = [
     # Endpoint para listar y crear BlogPosts
@@ -13,4 +13,7 @@ urlpatterns = [
     
     # Endpoint para asignar una puntuación (rating) a un BlogPost
     path('posts/<int:pk>/rate/', RatingView.as_view(), name='rating'),
+    
+    # Endpoint para obtener las entradas destacadas del blog
+    path('featured/', FeaturedBlogPostsView.as_view(), name='featured-posts'),
 ]

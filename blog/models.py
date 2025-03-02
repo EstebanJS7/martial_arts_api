@@ -7,6 +7,7 @@ class BlogPost(models.Model):
     content = models.TextField()
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_featured = models.BooleanField(default=False, help_text="Marcar como entrada destacada")
     image = models.ImageField(
         upload_to='blog_images/',
         blank=True,

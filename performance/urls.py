@@ -8,7 +8,8 @@ from .views import (
     ExamResultListCreateView,
     ExamResultDetailView,
     MyExamResultsView,
-    PerformanceStatisticsView
+    PerformanceStatisticsView,
+    UserPerformanceStatsView
 )
 
 urlpatterns = [
@@ -29,4 +30,7 @@ urlpatterns = [
 
     # Endpoint para estadísticas de desempeño
     path('statistics/', PerformanceStatisticsView.as_view(), name='performance-statistics'),
+    
+    # Endpoint para estadísticas de desempeño del usuario
+    path('user-stats/', UserPerformanceStatsView.as_view(), name='user-performance-stats'),
 ]

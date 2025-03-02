@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
+from datetime import timedelta
 
 from .models import Class, UserClassReservation
 from .serializers import (
@@ -17,6 +18,7 @@ from .serializers import (
     MultiClassUpdateSerializer
 )
 from users.permissions import IsAdminUser, IsInstructorUser
+from rest_framework.permissions import IsAuthenticated
 
 # Configurar el logger
 logger = logging.getLogger(__name__)
@@ -202,3 +204,47 @@ class UserClassReservationUpdateView(generics.UpdateAPIView):
                 new_class_obj.save()
         serializer.save()
         logger.info(f"{self.request.user.email} actualizó su reserva (ID: {old_reservation.pk}).")
+
+class UpcomingClassesView(APIView):
+    """
+    Vista para obtener las próximas clases programadas para el usuario autenticado.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Obtener la fecha actual
+        now = timezone.now()
+        
+        # Obtener las clases que ocurrirán en los próximos 7 días
+        end_date = now + timedelta(days=7)
+        
+        # Filtrar las clases por fecha
+        upcoming_classes = Class.objects.filter(
+            date__gte=now.date(),
+            date__lte=end_date.date()
+        ).order_by('date', 'start_time')
+        
+        # Verificar si el usuario tiene reservas para estas clases
+        user_reservations = UserClassReservation.objects.filter(
+            user=request.user,
+            class_instance__in=upcoming_classes,
+            is_cancelled=False
+        ).values_list('class_instance_id', flat=True)
+        
+        # Serializar las clases
+        serializer = ClassSerializer(upcoming_classes, many=True)
+        
+        # Agregar información de reserva a cada clase
+        data = serializer.data
+        for class_data in data:
+            class_data['is_reserved'] = class_data['id'] in user_reservations
+            
+            # Calcular espacios disponibles
+            total_capacity = class_data.get('capacity', 0)
+            reservations_count = UserClassReservation.objects.filter(
+                class_instance_id=class_data['id'],
+                is_cancelled=False
+            ).count()
+            class_data['available_spots'] = max(0, total_capacity - reservations_count)
+        
+        return Response(data)

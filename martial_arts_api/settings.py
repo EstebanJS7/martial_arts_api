@@ -203,3 +203,15 @@ CACHES = {
 
 # Tiempo de caché por defecto (en segundos)
 CACHE_TTL = 60 * 15  # 15 minutos
+
+# URL del frontend para enlaces de restablecimiento de contraseña
+FRONTEND_URL = 'http://localhost:5173'
+
+# Configuración de correo electrónico
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'tu_correo@gmail.com'  # Reemplazar con tu correo
+EMAIL_HOST_PASSWORD = 'tu_contraseña'  # Reemplazar con tu contraseña o clave de aplicación
+DEFAULT_FROM_EMAIL = 'Martial Arts <tu_correo@gmail.com>'
