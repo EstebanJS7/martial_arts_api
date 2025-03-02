@@ -1,17 +1,32 @@
+# urls.py
 from django.urls import path
-from .views import (PerformanceStatisticsView, BeltExamListCreateView, BeltExamDetailView, 
-                    EventParticipationListCreateView, EventParticipationDetailView, 
-                    EvaluationParameterListCreateView, EvaluationParameterDetailView,
-                    ExamParameterScoreListCreateView, ExamParameterScoreDetailView)
+from .views import (
+    EvaluationParameterListCreateView,
+    EvaluationParameterDetailView,
+    ExamSessionListCreateView,
+    ExamSessionDetailView,
+    ExamResultListCreateView,
+    ExamResultDetailView,
+    MyExamResultsView,
+    PerformanceStatisticsView
+)
 
 urlpatterns = [
-    path('statistics/', PerformanceStatisticsView.as_view(), name='performance-statistics'),
-    path('exams/', BeltExamListCreateView.as_view(), name='beltexam-list-create'),
-    path('exams/<int:pk>/', BeltExamDetailView.as_view(), name='beltexam-detail'),
-    path('events/', EventParticipationListCreateView.as_view(), name='eventparticipation-list-create'),
-    path('events/<int:pk>/', EventParticipationDetailView.as_view(), name='eventparticipation-detail'),
+    # Endpoints para parámetros de evaluación
     path('parameters/', EvaluationParameterListCreateView.as_view(), name='evaluationparameter-list-create'),
     path('parameters/<int:pk>/', EvaluationParameterDetailView.as_view(), name='evaluationparameter-detail'),
-    path('scores/', ExamParameterScoreListCreateView.as_view(), name='examparameterscore-list-create'),
-    path('scores/<int:pk>/', ExamParameterScoreDetailView.as_view(), name='examparameterscore-detail'),
+
+    # Endpoints para sesiones de examen
+    path('exam-sessions/', ExamSessionListCreateView.as_view(), name='exam-session-list-create'),
+    path('exam-sessions/<int:pk>/', ExamSessionDetailView.as_view(), name='exam-session-detail'),
+
+    # Endpoints para resultados de examen (calificación)
+    path('exam-results/', ExamResultListCreateView.as_view(), name='exam-result-list-create'),
+    path('exam-results/<int:pk>/', ExamResultDetailView.as_view(), name='exam-result-detail'),
+
+    # Endpoint para que el estudiante consulte sus resultados
+    path('my-exam-results/', MyExamResultsView.as_view(), name='my-exam-results'),
+
+    # Endpoint para estadísticas de desempeño
+    path('statistics/', PerformanceStatisticsView.as_view(), name='performance-statistics'),
 ]

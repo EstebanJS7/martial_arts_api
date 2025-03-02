@@ -1,79 +1,97 @@
+# serializers.py
 from rest_framework import serializers
-from .models import PerformanceStatistics, BeltExam, EventParticipation, EvaluationParameter, ExamParameterScore, Discipline
+from django.conf import settings
+from .models import (
+    EvaluationParameter,
+    ExamSession,
+    ExamResult,
+    ExamResultParameterScore,
+    PerformanceStatistics,
+)
+from django.contrib.auth import get_user_model
 
+User = get_user_model()
+
+# Para los parámetros de evaluación
 class EvaluationParameterSerializer(serializers.ModelSerializer):
     class Meta:
         model = EvaluationParameter
         fields = ['id', 'name', 'description']
 
-class ExamParameterScoreSerializer(serializers.ModelSerializer):
-    # Para escritura, se acepta únicamente el ID del parámetro
+# Serializador para las puntuaciones en un resultado de examen
+class ExamResultParameterScoreSerializer(serializers.ModelSerializer):
     parameter = serializers.PrimaryKeyRelatedField(queryset=EvaluationParameter.objects.all())
 
     class Meta:
-        model = ExamParameterScore
-        fields = ['id', 'exam', 'parameter', 'score']
-    
+        model = ExamResultParameterScore
+        fields = ['id', 'parameter', 'score']
+
     def to_representation(self, instance):
-        """ Representa el parámetro de forma anidada usando EvaluationParameterSerializer """
         rep = super().to_representation(instance)
         rep['parameter'] = EvaluationParameterSerializer(instance.parameter).data
         return rep
 
-class BeltExamSerializer(serializers.ModelSerializer):
-    # Se usa el serializer anterior para manejar la creación y actualización de las puntuaciones
-    parameters_evaluated = ExamParameterScoreSerializer(many=True)
+# Serializador para el resultado del examen de un participante
+class ExamResultSerializer(serializers.ModelSerializer):
+    parameter_scores = ExamResultParameterScoreSerializer(many=True)
 
     class Meta:
-        model = BeltExam
-        fields = ['id', 'user', 'belt_level', 'exam_date', 'parameters_evaluated', 'passed']
+        model = ExamResult
+        fields = ['id', 'exam_session', 'participant', 'graded', 'parameter_scores']
+        read_only_fields = ['participant', 'graded']
 
     def create(self, validated_data):
-        parameters_data = validated_data.pop('parameters_evaluated')
-        belt_exam = BeltExam.objects.create(**validated_data)
-        for parameter_data in parameters_data:
-            ExamParameterScore.objects.create(exam=belt_exam, **parameter_data)
-        return belt_exam
+        scores_data = validated_data.pop('parameter_scores')
+        exam_result = ExamResult.objects.create(**validated_data)
+        for score_data in scores_data:
+            ExamResultParameterScore.objects.create(exam_result=exam_result, **score_data)
+        return exam_result
 
     def update(self, instance, validated_data):
-        parameters_data = validated_data.pop('parameters_evaluated')
-        instance.belt_level = validated_data.get('belt_level', instance.belt_level)
-        instance.exam_date = validated_data.get('exam_date', instance.exam_date)
-        instance.passed = validated_data.get('passed', instance.passed)
-        instance.save()
-
-        # Actualizar o crear las puntuaciones de parámetros
-        for parameter_data in parameters_data:
-            parameter_obj = parameter_data.get('parameter')
-            # Si se envía como diccionario, se extrae el id; si no, se asume que es una instancia
-            if isinstance(parameter_obj, dict):
-                parameter_id = parameter_obj.get('id')
-            else:
-                parameter_id = parameter_obj.id
-            score = parameter_data.get('score')
-            ExamParameterScore.objects.update_or_create(
-                exam=instance,
-                parameter_id=parameter_id,
-                defaults={'score': score},
-            )
+        scores_data = validated_data.pop('parameter_scores', None)
+        # Actualizamos otros campos si es necesario
+        instance = super().update(instance, validated_data)
+        if scores_data is not None:
+            for score_data in scores_data:
+                parameter = score_data.get('parameter')
+                score = score_data.get('score')
+                ExamResultParameterScore.objects.update_or_create(
+                    exam_result=instance,
+                    parameter=parameter,
+                    defaults={'score': score},
+                )
         return instance
 
-class EventParticipationSerializer(serializers.ModelSerializer):
-    # Se permite la asignación de disciplinas mediante su nombre
-    disciplines = serializers.SlugRelatedField(
-        many=True,
-        slug_field='name',
-        queryset=Discipline.objects.all()
-    )
+# Serializador para la sesión de examen
+class ExamSessionSerializer(serializers.ModelSerializer):
+    participants = serializers.PrimaryKeyRelatedField(many=True, queryset=User.objects.all())
 
     class Meta:
-        model = EventParticipation
-        fields = ['id', 'user', 'event_name', 'disciplines', 'category', 'event_date']
+        model = ExamSession
+        fields = ['id', 'belt_level', 'exam_date', 'created_by', 'participants']
+        read_only_fields = ['created_by']
 
+    def create(self, validated_data):
+        participants = validated_data.pop('participants', [])
+        exam_session = ExamSession.objects.create(**validated_data)
+        exam_session.participants.set(participants)
+        # Opcional: Crear automáticamente un ExamResult para cada participante
+        for user in participants:
+            ExamResult.objects.get_or_create(exam_session=exam_session, participant=user)
+        return exam_session
+# Serializador para PerformanceStatistics
 class PerformanceStatisticsSerializer(serializers.ModelSerializer):
-    belt_exams = BeltExamSerializer(many=True, read_only=True)
-    event_participations = EventParticipationSerializer(many=True, read_only=True)
+    # Se anidan los resultados de examen y las participaciones en eventos
+    belt_exams = serializers.SerializerMethodField()
+    event_participations = serializers.SerializerMethodField()
 
     class Meta:
         model = PerformanceStatistics
         fields = ['user', 'classes_attended', 'belt_exams', 'event_participations', 'last_updated']
+
+    def get_belt_exams(self, obj):
+        # Para simplificar, se listan los IDs de las sesiones a las que el usuario participó
+        return [session.id for session in obj.user.exam_sessions.all()]
+
+    def get_event_participations(self, obj):
+        return [ep.id for ep in obj.user.event_participations.all()]

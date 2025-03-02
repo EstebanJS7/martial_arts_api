@@ -1,69 +1,121 @@
-from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from .models import PerformanceStatistics, BeltExam, EventParticipation, EvaluationParameter, ExamParameterScore
-from .serializers import (
-    PerformanceStatisticsSerializer, 
-    BeltExamSerializer, 
-    EventParticipationSerializer, 
-    EvaluationParameterSerializer, 
-    ExamParameterScoreSerializer
+# views.py
+from rest_framework import generics, permissions, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.db.models import Prefetch, Q
+from .models import (
+    EvaluationParameter,
+    ExamSession,
+    ExamResult,
+    PerformanceStatistics,
+    Discipline
 )
+from .serializers import (
+    EvaluationParameterSerializer,
+    ExamSessionSerializer,
+    ExamResultSerializer,
+    PerformanceStatisticsSerializer
+)
+from users.permissions import IsAdminUser, IsInstructorUser  # Se asume que existen
+from martial_arts_api.pagination import StandardResultsSetPagination, SmallResultsSetPagination
 
-# Vistas para los parámetros de evaluación
+# --- Endpoints para EvaluationParameter ---
+
 class EvaluationParameterListCreateView(generics.ListCreateAPIView):
-    queryset = EvaluationParameter.objects.all()
+    queryset = EvaluationParameter.objects.all().order_by('name')
     serializer_class = EvaluationParameterSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdminUser]  # Solo admin puede gestionar parámetros
+    pagination_class = SmallResultsSetPagination
 
 class EvaluationParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = EvaluationParameter.objects.all()
     serializer_class = EvaluationParameterSerializer
     permission_classes = [IsAdminUser]
 
-# Vistas para los exámenes de cinturón
-class BeltExamListCreateView(generics.ListCreateAPIView):
-    queryset = BeltExam.objects.all()
-    serializer_class = BeltExamSerializer
-    permission_classes = [IsAuthenticated]
+# --- Endpoints para ExamSession ---
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-class BeltExamDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = BeltExam.objects.all()
-    serializer_class = BeltExamSerializer
-    permission_classes = [IsAuthenticated]
-
-# Vistas para las participaciones en eventos
-class EventParticipationListCreateView(generics.ListCreateAPIView):
-    queryset = EventParticipation.objects.all()
-    serializer_class = EventParticipationSerializer
-    permission_classes = [IsAuthenticated]
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-class EventParticipationDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = EventParticipation.objects.all()
-    serializer_class = EventParticipationSerializer
-    permission_classes = [IsAuthenticated]
-
-# Vistas para las puntuaciones de los parámetros evaluados
-class ExamParameterScoreListCreateView(generics.ListCreateAPIView):
-    queryset = ExamParameterScore.objects.all()
-    serializer_class = ExamParameterScoreSerializer
-    permission_classes = [IsAdminUser]
-
-class ExamParameterScoreDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = ExamParameterScore.objects.all()
-    serializer_class = ExamParameterScoreSerializer
-    permission_classes = [IsAdminUser]
-
-# Vista para las estadísticas de desempeño
-class PerformanceStatisticsView(generics.RetrieveAPIView):
-    queryset = PerformanceStatistics.objects.all()
-    serializer_class = PerformanceStatisticsSerializer
-    permission_classes = [IsAuthenticated]
-
+class ExamSessionListCreateView(generics.ListCreateAPIView):
+    """
+    Permite a instructores o administradores crear una sesión de examen.
+    En la creación, se puede enviar la lista de participantes.
+    """
+    serializer_class = ExamSessionSerializer
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
     def get_queryset(self):
-        return PerformanceStatistics.objects.filter(user=self.request.user)
+        # Optimización: Usar select_related para el creador y prefetch_related para participantes
+        return ExamSession.objects.select_related('created_by').prefetch_related(
+            'participants'
+        ).order_by('-exam_date')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+class ExamSessionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ExamSessionSerializer
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get_queryset(self):
+        return ExamSession.objects.select_related('created_by').prefetch_related(
+            'participants'
+        )
+
+# --- Endpoints para ExamResult ---
+
+class ExamResultListCreateView(generics.ListCreateAPIView):
+    """
+    Permite a instructores/admin ver o crear resultados de examen.
+    Se puede usar para calificar a los participantes.
+    """
+    serializer_class = ExamResultSerializer
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get_queryset(self):
+        # Filtrar por sesión de examen si se proporciona
+        exam_session_id = self.request.query_params.get('exam_session')
+        queryset = ExamResult.objects.select_related(
+            'exam_session', 'participant'
+        )
+        
+        if exam_session_id:
+            queryset = queryset.filter(exam_session_id=exam_session_id)
+            
+        return queryset.order_by('-exam_session__exam_date')
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+class ExamResultDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ExamResultSerializer
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get_queryset(self):
+        return ExamResult.objects.select_related('exam_session', 'participant')
+
+class MyExamResultsView(generics.ListAPIView):
+    """
+    Permite a un estudiante ver sus resultados de examen.
+    """
+    serializer_class = ExamResultSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        # Optimización: Usar select_related para cargar la sesión de examen
+        return ExamResult.objects.select_related(
+            'exam_session'
+        ).filter(
+            participant=self.request.user
+        ).order_by('-exam_session__exam_date')
+
+class PerformanceStatisticsView(generics.RetrieveAPIView):
+    """
+    Permite al usuario autenticado ver sus estadísticas de desempeño.
+    """
+    serializer_class = PerformanceStatisticsSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        # Optimización: Usar select_related para cargar el usuario
+        return PerformanceStatistics.objects.select_related('user').filter(
+            user=self.request.user
+        )

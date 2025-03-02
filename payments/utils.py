@@ -1,6 +1,6 @@
-from datetime import date, timedelta
+from datetime import date
 from .models import Payment, QuotaConfig
-from users.models import CustomUser
+from .services import PaymentService
 
 def create_next_month_payment(user):
     """
@@ -19,19 +19,19 @@ def create_next_month_payment(user):
         )
         return payment
     except QuotaConfig.DoesNotExist:
-        # Log the error or handle it appropriately (e.g., raise an exception)
-        print("Error: No QuotaConfig found.")  # Or use a proper logger
-        return None  # Or raise an exception
+        # Manejo del error: no se encontró una configuración de cuota
+        print("Error: No QuotaConfig found.")
+        return None
     except Exception as e:
-        # Log the error
-        print(f"Error creating payment: {e}") # Or use a proper logger
-        return None # Or raise the exception
+        print(f"Error creating payment: {e}")
+        return None
 
 def check_user_due_status(user):
     """
     Verifica si el usuario tiene pagos vencidos.
     Se usan filtros directamente, ya que los métodos get_due_payments y get_upcoming_payments no están definidos.
     """
+    from datetime import date
     due_payments = Payment.objects.filter(user=user, due_date__lt=date.today(), is_fully_paid=False)
     if due_payments.exists():
         return {
@@ -47,9 +47,9 @@ def check_user_due_status(user):
 
 def apply_user_payment(user, payment_amount):
     """
-    Aplica el pago de un usuario a las deudas pendientes, comenzando por las más antiguas.
+    Aplica el pago de un usuario a los pagos pendientes, comenzando por las más antiguas.
     """
-    Payment.apply_payment(user, payment_amount)
+    PaymentService.apply_payment(user, payment_amount)
 
 def should_user_pay(user):
     """

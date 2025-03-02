@@ -13,7 +13,11 @@ from .serializers import UserSerializer
 from .permissions import IsAdminUser
 from .forms import EmailAuthenticationForm
 from payments.models import Payment
+from payments.services import PaymentService 
+import logging
 # Create your views here.
+
+logger = logging.getLogger(__name__)
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserProfileSerializer
@@ -31,10 +35,13 @@ class RegisterView(generics.CreateAPIView):
     def perform_create(self, serializer):
         # Crear el usuario
         user = serializer.save()
-
-        # Crear pagos automáticos para el usuario hasta fin de año
-        Payment.create_payments_for_remaining_year(user)
         
+        # Intentar crear los pagos automáticos para el usuario hasta fin de año
+        try:
+            PaymentService.create_payments_for_remaining_year(user)
+        except Exception as e:
+            # Se registra el error pero no se impide el registro del usuario
+            logger.error(f"Error creando pagos para el usuario {user.email}: {e}")
 class LoginView(APIView):
     throttle_classes = [LoginRateThrottle]
     permission_classes = (AllowAny,)

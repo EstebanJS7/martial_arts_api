@@ -9,6 +9,7 @@ class QuotaConfig(models.Model):
     def __str__(self):
         return f"Cuota de {self.amount} con vencimiento el día {self.due_day} de cada mes."
 
+
 class Payment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -22,55 +23,24 @@ class Payment(models.Model):
     def save(self, *args, **kwargs):
         # Obtener la configuración de cuota más reciente
         current_quota = QuotaConfig.objects.latest('id')
-
-        # Calcular automáticamente la fecha de vencimiento si no está definida
+        # Completar la fecha de vencimiento si no se proporciona
         if not self.due_date:
             self.due_date = self._get_next_due_date(current_quota)
-
-        # Asignar el monto de la cuota actual si no se especifica
+        # Asignar el monto si no se especifica
         if not self.amount:
             self.amount = current_quota.amount
-
+        # Si se marca como pago completo, forzamos amount_paid al monto total
+        if self.is_fully_paid:
+            self.amount_paid = self.amount
+            self.is_paid = True
         super().save(*args, **kwargs)
 
-    @classmethod
-    def create_payments_for_remaining_year(cls, user):
-        """ Crea pagos automáticos hasta el final del año actual (o siguiente) """
-        current_quota = QuotaConfig.objects.latest('id')
-        today = date.today()
-        # Si estamos después del día de vencimiento, iniciar desde el siguiente mes
-        start_month = today.month if today.day <= current_quota.due_day else today.month + 1
-        end_year = today.year
-
-        payments = []
-        for month in range(start_month, 13):
-            due_date = date(end_year, month, current_quota.due_day)
-            payment = cls(user=user, due_date=due_date, amount=current_quota.amount, is_paid=False)
-            payments.append(payment)
-        cls.objects.bulk_create(payments)
-
     def _get_next_due_date(self, current_quota):
-        """ Calcula la próxima fecha de vencimiento según la cuota configurada """
+        """Calcula la próxima fecha de vencimiento según la configuración de la cuota"""
         today = date.today()
         next_month = today.month + 1 if today.month < 12 else 1
         year = today.year if today.month < 12 else today.year + 1
         return date(year, next_month, current_quota.due_day)
-
-    @staticmethod
-    def apply_payment(user, payment_amount):
-        """ Aplica un pago a los pagos pendientes del usuario """
-        pending_payments = Payment.objects.filter(user=user, is_fully_paid=False).order_by('due_date')
-        for payment in pending_payments:
-            amount_needed = payment.amount - payment.amount_paid
-            if payment_amount >= amount_needed:
-                payment.amount_paid = payment.amount
-                payment.is_fully_paid = True
-                payment.is_paid = True
-                payment_amount -= amount_needed
-            else:
-                payment.amount_paid += payment_amount
-                payment_amount = 0
-            payment.save()
 
     def __str__(self):
         today = date.today()
@@ -83,6 +53,18 @@ class Payment(models.Model):
         else:
             return f"{self.user.email} - {self.amount} - Pendiente"
 
-    def is_due(self):
-        """ Verifica si el pago está vencido """
-        return date.today() > self.due_date
+
+class PaymentTransaction(models.Model):
+    """
+    Registro de cada transacción de pago para auditoría y seguimiento.
+    """
+    payment = models.ForeignKey(Payment, related_name="transactions", on_delete=models.CASCADE)
+    transaction_date = models.DateTimeField(auto_now_add=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.CharField(max_length=255, blank=True, null=True)
+    # Información adicional para auditoría
+    payment_method = models.CharField(max_length=50, blank=True, null=True)
+    external_transaction_id = models.CharField(max_length=100, blank=True, null=True)
+
+    def __str__(self):
+        return f"Transacción de {self.amount} en {self.transaction_date}"

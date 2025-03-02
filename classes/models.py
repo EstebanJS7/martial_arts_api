@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from datetime import timedelta
 
 class Class(models.Model):
     """
@@ -15,6 +16,10 @@ class Class(models.Model):
     )
     date = models.DateTimeField()
     max_students = models.IntegerField()
+    # Nuevo campo duración con valor por defecto de 1 hora
+    duration = models.DurationField(default=timedelta(hours=1))
+    # Campo para almacenar el número de reservas actuales y evitar consultas COUNT cada vez
+    reservation_count = models.IntegerField(default=0)
 
     class Meta: 
         verbose_name = "Clase"

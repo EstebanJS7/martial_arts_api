@@ -4,13 +4,25 @@ from .serializers import GallerySerializer, GalleryItemSerializer
 from users.permissions import IsAdminUser
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.conf import settings
+from rest_framework.pagination import PageNumberPagination
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 # Vista para gestionar galerías
+@method_decorator(cache_page(settings.CACHE_TTL), name='list')
 class GalleryListCreateView(generics.ListCreateAPIView):
     queryset = Gallery.objects.all()
     serializer_class = GallerySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = StandardResultsSetPagination
 
+@method_decorator(cache_page(settings.CACHE_TTL), name='retrieve')
 class GalleryDetailView(generics.RetrieveAPIView):
     queryset = Gallery.objects.all()
     serializer_class = GallerySerializer

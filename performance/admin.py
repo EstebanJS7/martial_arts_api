@@ -1,5 +1,13 @@
 from django.contrib import admin
-from .models import Discipline, EvaluationParameter, BeltExam, ExamParameterScore, EventParticipation, PerformanceStatistics
+from .models import (
+    Discipline, 
+    EvaluationParameter, 
+    ExamSession, 
+    ExamResult, 
+    ExamResultParameterScore, 
+    EventParticipation, 
+    PerformanceStatistics
+)
 
 @admin.register(Discipline)
 class DisciplineAdmin(admin.ModelAdmin):
@@ -11,16 +19,22 @@ class EvaluationParameterAdmin(admin.ModelAdmin):
     list_display = ('name',)
     search_fields = ('name',)
 
-@admin.register(BeltExam)
-class BeltExamAdmin(admin.ModelAdmin):
-    list_display = ('user', 'belt_level', 'exam_date', 'passed')
-    list_filter = ('passed', 'belt_level')
-    search_fields = ('user__email',)
+@admin.register(ExamSession)
+class ExamSessionAdmin(admin.ModelAdmin):
+    list_display = ('belt_level', 'exam_date', 'created_by')
+    list_filter = ('belt_level', 'exam_date')
+    search_fields = ('created_by__email', 'belt_level')
 
-@admin.register(ExamParameterScore)
-class ExamParameterScoreAdmin(admin.ModelAdmin):
-    list_display = ('exam', 'parameter', 'score')
-    search_fields = ('exam__user__email', 'parameter__name')
+@admin.register(ExamResult)
+class ExamResultAdmin(admin.ModelAdmin):
+    list_display = ('exam_session', 'participant', 'graded')
+    list_filter = ('graded',)
+    search_fields = ('participant__email', 'exam_session__belt_level')
+
+@admin.register(ExamResultParameterScore)
+class ExamResultParameterScoreAdmin(admin.ModelAdmin):
+    list_display = ('exam_result', 'parameter', 'score')
+    search_fields = ('exam_result__participant__email', 'parameter__name')
 
 @admin.register(EventParticipation)
 class EventParticipationAdmin(admin.ModelAdmin):

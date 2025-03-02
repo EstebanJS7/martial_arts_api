@@ -1,21 +1,21 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import BeltExam, EventParticipation, PerformanceStatistics
+from .models import ExamResult, EventParticipation, PerformanceStatistics
 
-@receiver(post_save, sender=BeltExam)
-def update_stats_after_belt_exam(sender, instance, created, **kwargs):
+@receiver(post_save, sender=ExamResult)
+def update_stats_after_exam_result(sender, instance, created, **kwargs):
     """
-    Actualiza las estadísticas cuando se crea o actualiza un BeltExam.
+    Actualiza las estadísticas cuando se crea o actualiza un ExamResult.
     """
-    stats, _ = PerformanceStatistics.objects.get_or_create(user=instance.user)
+    stats, _ = PerformanceStatistics.objects.get_or_create(user=instance.participant)
     stats.update_statistics()
 
-@receiver(post_delete, sender=BeltExam)
-def update_stats_after_belt_exam_delete(sender, instance, **kwargs):
+@receiver(post_delete, sender=ExamResult)
+def update_stats_after_exam_result_delete(sender, instance, **kwargs):
     """
-    Actualiza las estadísticas cuando se elimina un BeltExam.
+    Actualiza las estadísticas cuando se elimina un ExamResult.
     """
-    stats, _ = PerformanceStatistics.objects.get_or_create(user=instance.user)
+    stats, _ = PerformanceStatistics.objects.get_or_create(user=instance.participant)
     stats.update_statistics()
 
 @receiver(post_save, sender=EventParticipation)
