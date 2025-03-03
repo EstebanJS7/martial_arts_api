@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -62,7 +63,7 @@ class Resource(models.Model):
     thumbnail = models.ImageField(upload_to='resources/thumbnails/', blank=True, null=True, verbose_name=_("Miniatura"))
     file_size = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("Tamaño del archivo"))
     duration = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("Duración (segundos)"))
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Fecha de creación"), default=models.functions.Now())
+    created_at = models.DateTimeField(default=timezone.now, verbose_name=_("Fecha de creación"))
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Fecha de actualización"))
     author = models.ForeignKey(
         User, 
