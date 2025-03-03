@@ -210,3 +210,106 @@ class PasswordResetConfirmView(APIView):
                 {'success': False, 'message': 'Ocurrió un error al procesar tu solicitud'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class ChangePasswordView(APIView):
+    """
+    Vista para cambiar la contraseña del usuario autenticado.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        user = request.user
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+        
+        if not old_password or not new_password:
+            return Response(
+                {'success': False, 'message': 'Ambas contraseñas son requeridas'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if not user.check_password(old_password):
+            return Response(
+                {'success': False, 'message': 'La contraseña actual es incorrecta'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        user.set_password(new_password)
+        user.save()
+        
+        return Response(
+            {'success': True, 'message': 'Contraseña actualizada correctamente'},
+            status=status.HTTP_200_OK
+        )
+
+class UpdateUserRoleView(APIView):
+    """
+    Vista para actualizar el rol de un usuario.
+    Solo accesible por administradores.
+    """
+    permission_classes = [IsAdminUser]
+    
+    def post(self, request, user_id):
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            new_role = request.data.get('role')
+            
+            if not new_role or new_role not in ['admin', 'instructor', 'student']:
+                return Response(
+                    {'success': False, 'message': 'Rol inválido'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            user.userprofile.role = new_role
+            user.userprofile.save()
+            
+            return Response(
+                {'success': True, 'message': f'Rol actualizado a {new_role}'},
+                status=status.HTTP_200_OK
+            )
+            
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'success': False, 'message': 'Usuario no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+class InstructorStudentsView(generics.ListAPIView):
+    """
+    Vista para obtener la lista de estudiantes asignados a un instructor.
+    """
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrInstructor]
+    
+    def get_queryset(self):
+        if self.request.user.userprofile.role == 'admin':
+            # Los administradores pueden ver todos los estudiantes
+            return CustomUser.objects.filter(userprofile__role='student')
+        elif self.request.user.userprofile.role == 'instructor':
+            # Los instructores solo ven sus estudiantes asignados
+            instructor_dojo = self.request.user.userprofile.dojo
+            return CustomUser.objects.filter(
+                userprofile__role='student',
+                userprofile__dojo=instructor_dojo
+            )
+        return CustomUser.objects.none()
+
+class VerifyTokenView(APIView):
+    """
+    Vista para verificar si el token de autenticación es válido.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        return Response({
+            'success': True,
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': user.userprofile.role,
+                'dojo': user.userprofile.dojo
+            }
+        })
