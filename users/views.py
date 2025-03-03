@@ -50,7 +50,8 @@ class RegisterView(generics.CreateAPIView):
             logger.error(f"Error creando pagos para el usuario {user.email}: {e}")
 
 class LoginView(APIView):
-    throttle_classes = [LoginRateThrottle]
+    # Comentado temporalmente para eliminar dependencia de Redis
+    # throttle_classes = [LoginRateThrottle]
     permission_classes = (AllowAny,)
     
     def post(self, request, *args, **kwargs):
