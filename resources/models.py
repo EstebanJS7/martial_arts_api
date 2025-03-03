@@ -62,13 +62,15 @@ class Resource(models.Model):
     thumbnail = models.ImageField(upload_to='resources/thumbnails/', blank=True, null=True, verbose_name=_("Miniatura"))
     file_size = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("Tamaño del archivo"))
     duration = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("Duración (segundos)"))
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Fecha de creación"))
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Fecha de creación"), default=models.functions.Now())
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Fecha de actualización"))
     author = models.ForeignKey(
         User, 
         on_delete=models.CASCADE, 
         related_name='resources',
-        verbose_name=_("Autor")
+        verbose_name=_("Autor"),
+        null=True,
+        blank=True
     )
     tags = models.ManyToManyField(ResourceTag, blank=True, related_name='resources', verbose_name=_("Etiquetas"))
     views_count = models.PositiveIntegerField(default=0, verbose_name=_("Número de vistas"))
