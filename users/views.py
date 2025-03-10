@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 # from rest_framework_simplejwt.views import TokenObtainPairView
 from .throttling import LoginRateThrottle
 from .serializers import UserSerializer 
-from .permissions import IsAdminUser
+from .permissions import IsAdminUser, IsAdminOrInstructor
 from .forms import EmailAuthenticationForm
 from payments.models import Payment
 from payments.services import PaymentService 
