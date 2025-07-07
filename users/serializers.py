@@ -8,6 +8,11 @@ from django.utils.translation import gettext_lazy as _
 User = get_user_model()
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    # Campos del usuario relacionado
+    email = serializers.EmailField(source='user.email', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    
     class Meta:
         model = UserProfile
         fields = '__all__'
