@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework import serializers
 from .models import Class, UserClassReservation
 
@@ -9,6 +10,18 @@ class ClassSerializer(serializers.ModelSerializer):
         model = Class
         fields = '__all__'
         read_only_fields = ('reservation_count',)
+    
+    def create(self, validated_data):
+        # Asegurar que las fechas tengan timezone si no la tienen
+        if 'date' in validated_data and validated_data['date'] and timezone.is_naive(validated_data['date']):
+            validated_data['date'] = timezone.make_aware(validated_data['date'])
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        # Asegurar que las fechas tengan timezone si no la tienen
+        if 'date' in validated_data and validated_data['date'] and timezone.is_naive(validated_data['date']):
+            validated_data['date'] = timezone.make_aware(validated_data['date'])
+        return super().update(instance, validated_data)
 
 class UserClassReservationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -25,7 +38,14 @@ class MultiClassCreateSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         classes_data = validated_data.pop('classes')
-        classes_instances = [Class(**item) for item in classes_data]
+        classes_instances = []
+        
+        for item in classes_data:
+            # Asegurar que las fechas tengan timezone si no la tienen
+            if 'date' in item and item['date'] and timezone.is_naive(item['date']):
+                item['date'] = timezone.make_aware(item['date'])
+            classes_instances.append(Class(**item))
+            
         return Class.objects.bulk_create(classes_instances)
 
 class MultiClassUpdateSerializer(serializers.Serializer):

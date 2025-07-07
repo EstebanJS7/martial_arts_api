@@ -9,7 +9,8 @@ from .views import (
     UserClassReservationCreateView,
     UserClassReservationCancelView,
     UserClassReservationUpdateView,
-    UpcomingClassesView
+    UpcomingClassesView,
+    UserClassesView
 )
 
 urlpatterns = [
@@ -22,4 +23,5 @@ urlpatterns = [
     path('reserve/<int:pk>/cancel/', UserClassReservationCancelView.as_view(), name='class-reservation-cancel'),
     path('reserve/<int:pk>/update/', UserClassReservationUpdateView.as_view(), name='class-reservation-update'),
     path('upcoming/', UpcomingClassesView.as_view(), name='upcoming-classes'),
+    path('user-classes/', UserClassesView.as_view(), name='user-classes'),
 ]

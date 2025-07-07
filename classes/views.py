@@ -220,16 +220,15 @@ class UpcomingClassesView(APIView):
         
         # Filtrar las clases por fecha
         upcoming_classes = Class.objects.filter(
-            date__gte=now.date(),
-            date__lte=end_date.date()
-        ).order_by('date', 'start_time')
+            date__gte=now,
+            date__lte=end_date
+        ).order_by('date')
         
         # Verificar si el usuario tiene reservas para estas clases
         user_reservations = UserClassReservation.objects.filter(
             user=request.user,
-            class_instance__in=upcoming_classes,
-            is_cancelled=False
-        ).values_list('class_instance_id', flat=True)
+            class_reserved__in=upcoming_classes
+        ).values_list('class_reserved_id', flat=True)
         
         # Serializar las clases
         serializer = ClassSerializer(upcoming_classes, many=True)
@@ -240,11 +239,33 @@ class UpcomingClassesView(APIView):
             class_data['is_reserved'] = class_data['id'] in user_reservations
             
             # Calcular espacios disponibles
-            total_capacity = class_data.get('capacity', 0)
+            total_capacity = class_data.get('max_students', 0)
             reservations_count = UserClassReservation.objects.filter(
-                class_instance_id=class_data['id'],
-                is_cancelled=False
+                class_reserved_id=class_data['id']
             ).count()
             class_data['available_spots'] = max(0, total_capacity - reservations_count)
         
         return Response(data)
+
+
+class UserClassesView(APIView):
+    """
+    Vista para obtener las clases reservadas por el usuario autenticado.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Obtener las reservas del usuario
+        user_reservations = UserClassReservation.objects.filter(
+            user=request.user
+        ).select_related('class_reserved', 'class_reserved__instructor')
+        
+        # Serializar las clases reservadas
+        classes_data = []
+        for reservation in user_reservations:
+            class_data = ClassSerializer(reservation.class_reserved).data
+            class_data['reservation_id'] = reservation.id
+            class_data['reservation_created_at'] = reservation.created_at
+            classes_data.append(class_data)
+        
+        return Response(classes_data)
