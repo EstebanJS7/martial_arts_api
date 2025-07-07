@@ -6,10 +6,89 @@ from .models import Class, UserClassReservation
 User = get_user_model()
 
 class ClassSerializer(serializers.ModelSerializer):
+    instructor_name = serializers.SerializerMethodField()
+    instructor_full_name = serializers.SerializerMethodField()
+    instructor_email = serializers.SerializerMethodField()
+    available_spots = serializers.SerializerMethodField()
+    is_reserved = serializers.SerializerMethodField()
+    is_reservable = serializers.SerializerMethodField()
+    formatted_date = serializers.SerializerMethodField()
+    formatted_duration = serializers.SerializerMethodField()
+    
     class Meta:
         model = Class
         fields = '__all__'
         read_only_fields = ('reservation_count',)
+    
+    def get_instructor_name(self, obj):
+        if obj.instructor:
+            return f"{obj.instructor.first_name or ''} {obj.instructor.last_name or ''}".strip() or obj.instructor.email
+        return "Sin instructor asignado"
+    
+    def get_instructor_full_name(self, obj):
+        if obj.instructor:
+            first_name = obj.instructor.first_name or ""
+            last_name = obj.instructor.last_name or ""
+            if first_name or last_name:
+                return f"{first_name} {last_name}".strip()
+            return obj.instructor.email
+        return "Sin instructor asignado"
+    
+    def get_instructor_email(self, obj):
+        return obj.instructor.email if obj.instructor else None
+    
+    def get_available_spots(self, obj):
+        return max(0, obj.max_students - obj.reservation_count)
+    
+    def get_is_reserved(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.userclassreservation_set.filter(user=request.user).exists()
+        return False
+    
+    def get_is_reservable(self, obj):
+        """
+        Una clase es reservable si:
+        1. Es futura (date > now)
+        2. Tiene cupos disponibles
+        3. El usuario no tiene ya una reserva
+        """
+        now = timezone.now()
+        
+        # Verificar que sea futura
+        if obj.date <= now:
+            return False
+        
+        # Verificar que tenga cupos disponibles
+        if obj.reservation_count >= obj.max_students:
+            return False
+        
+        # Verificar que el usuario no tenga ya una reserva
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            if obj.userclassreservation_set.filter(user=request.user).exists():
+                return False
+        
+        return True
+    
+    def get_formatted_date(self, obj):
+        if obj.date:
+            return obj.date.strftime("%d/%m/%Y %H:%M")
+        return None
+    
+    def get_formatted_duration(self, obj):
+        if obj.duration:
+            total_seconds = int(obj.duration.total_seconds())
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            
+            if hours > 0 and minutes > 0:
+                return f"{hours}h {minutes}min"
+            elif hours > 0:
+                return f"{hours}h"
+            else:
+                return f"{minutes}min"
+        return "1h"  # Default
     
     def create(self, validated_data):
         # Asegurar que las fechas tengan timezone si no la tienen

@@ -10,13 +10,15 @@ from .views import (
     UserClassReservationCancelView,
     UserClassReservationUpdateView,
     UpcomingClassesView,
-    UserClassesView
+    UserClassesView,
+    AllClassesView
 )
 
 urlpatterns = [
     path('create/', ClassCreateView.as_view(), name='class-create'),
     path('create-multiple/', MultiClassCreateView.as_view(), name='class-create-multiple'),
     path('list/', ClassListView.as_view(), name='class-list'),
+    path('all/', AllClassesView.as_view(), name='all-classes'),
     path('<int:pk>/', ClassDetailView.as_view(), name='class-detail'),
     path('classes/bulk-update/', MultiClassUpdateView.as_view(), name='classes-bulk-update'),
     path('reserve/', UserClassReservationCreateView.as_view(), name='class-reserve'),

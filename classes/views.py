@@ -133,6 +133,11 @@ class UserClassReservationCreateView(generics.CreateAPIView):
         # Usar select_for_update para bloquear la fila durante la transacción
         class_obj = Class.objects.select_for_update().get(pk=class_to_reserve.pk)
         
+        # Verificar que la clase sea futura
+        now = timezone.now()
+        if class_obj.date <= now:
+            raise ValidationError("No se puede reservar una clase que ya pasó o está en curso.")
+        
         # Verificar si la clase está llena
         if class_obj.reservation_count >= class_obj.max_students:
             raise ValidationError("La clase está llena.")
@@ -208,6 +213,7 @@ class UserClassReservationUpdateView(generics.UpdateAPIView):
 class UpcomingClassesView(APIView):
     """
     Vista para obtener las próximas clases programadas para el usuario autenticado.
+    Muestra clases de los próximos 30 días con información completa del instructor.
     """
     permission_classes = [IsAuthenticated]
     
@@ -215,37 +221,19 @@ class UpcomingClassesView(APIView):
         # Obtener la fecha actual
         now = timezone.now()
         
-        # Obtener las clases que ocurrirán en los próximos 7 días
-        end_date = now + timedelta(days=7)
+        # Obtener las clases que ocurrirán en los próximos 30 días
+        end_date = now + timedelta(days=30)
         
-        # Filtrar las clases por fecha
+        # Filtrar las clases por fecha y optimizar consultas
         upcoming_classes = Class.objects.filter(
             date__gte=now,
             date__lte=end_date
-        ).order_by('date')
+        ).select_related('instructor').order_by('date')
         
-        # Verificar si el usuario tiene reservas para estas clases
-        user_reservations = UserClassReservation.objects.filter(
-            user=request.user,
-            class_reserved__in=upcoming_classes
-        ).values_list('class_reserved_id', flat=True)
+        # Serializar las clases con el contexto para el request
+        serializer = ClassSerializer(upcoming_classes, many=True, context={'request': request})
         
-        # Serializar las clases
-        serializer = ClassSerializer(upcoming_classes, many=True)
-        
-        # Agregar información de reserva a cada clase
-        data = serializer.data
-        for class_data in data:
-            class_data['is_reserved'] = class_data['id'] in user_reservations
-            
-            # Calcular espacios disponibles
-            total_capacity = class_data.get('max_students', 0)
-            reservations_count = UserClassReservation.objects.filter(
-                class_reserved_id=class_data['id']
-            ).count()
-            class_data['available_spots'] = max(0, total_capacity - reservations_count)
-        
-        return Response(data)
+        return Response(serializer.data)
 
 
 class UserClassesView(APIView):
@@ -269,3 +257,21 @@ class UserClassesView(APIView):
             classes_data.append(class_data)
         
         return Response(classes_data)
+
+class AllClassesView(APIView):
+    """
+    Vista para obtener todas las clases disponibles (pasadas y futuras).
+    Útil para mostrar un historial completo o todas las clases del sistema.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Obtener todas las clases ordenadas por fecha
+        all_classes = Class.objects.filter(
+            date__gte=timezone.now() - timedelta(days=30)  # Últimos 30 días
+        ).select_related('instructor').order_by('-date')
+        
+        # Serializar las clases con el contexto para el request
+        serializer = ClassSerializer(all_classes, many=True, context={'request': request})
+        
+        return Response(serializer.data)
