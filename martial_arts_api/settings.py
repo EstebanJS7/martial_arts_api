@@ -143,10 +143,11 @@ SIMPLE_JWT = {
 # CELERY_TASK_SERIALIZER = 'json'
 # CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 
+
 # CELERY_BEAT_SCHEDULE = {
-#     'generate-monthly-payments': {
-#         'task': 'payments.tasks.generate_monthly_payments',
-#         'schedule': crontab(day_of_month=1, hour=0, minute=0),
+#     'generar-cuotas-anuales-cada-enero': {
+#         'task': 'martial_arts_api.tasks.generate_annual_payments_for_all_students',
+#         'schedule': crontab(minute=0, hour=0, day_ofmonth=1, month_of_year=1),  # 1 de enero a las 00:00
 #     },
 # }
 

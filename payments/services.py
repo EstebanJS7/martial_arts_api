@@ -4,7 +4,7 @@ from .models import Payment, QuotaConfig, PaymentTransaction
 
 class PaymentService:
     @classmethod
-    def apply_payment(cls, user, payment_amount):
+    def apply_payment(cls, user, payment_amount, payment_method=None, description=None):
         payment_amount = Decimal(payment_amount)
         # Obtener pagos pendientes del usuario ordenados por fecha de vencimiento
         pending_payments = Payment.objects.filter(user=user, is_fully_paid=False).order_by('due_date')
@@ -21,7 +21,8 @@ class PaymentService:
                 PaymentTransaction.objects.create(
                     payment=payment,
                     amount=amount_needed,
-                    description="Pago completado"
+                    description=description or "Pago completado",
+                    payment_method=payment_method
                 )
                 payment_amount -= amount_needed
             else:
@@ -30,7 +31,8 @@ class PaymentService:
                 PaymentTransaction.objects.create(
                     payment=payment,
                     amount=payment_amount,
-                    description="Pago parcial"
+                    description=description or "Pago parcial",
+                    payment_method=payment_method
                 )
                 payment_amount = Decimal(0)
                 if payment.amount_paid == payment.amount:

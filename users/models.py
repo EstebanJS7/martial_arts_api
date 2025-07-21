@@ -58,3 +58,15 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
         UserProfile.objects.create(user=instance)
     else:
         instance.userprofile.save()
+
+# Señal para crear la primera cuota cuando se crea un UserProfile con rol 'student'
+@receiver(post_save, sender=UserProfile)
+def create_first_payments_for_student(sender, instance, created, **kwargs):
+    if created and instance.role == 'student':
+        try:
+            # Importar aquí para evitar dependencias circulares
+            from payments.services import PaymentService
+            PaymentService.create_payments_for_remaining_year(instance.user)
+        except Exception as e:
+            # Log del error pero no fallar la creación del perfil
+            print(f"Error creating annual payments for student {instance.user.email}: {e}")

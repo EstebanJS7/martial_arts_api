@@ -62,11 +62,15 @@ class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
 class PaymentCreateView(generics.CreateAPIView):
     """
     Permite crear un nuevo pago. Tras la creación, se crea automáticamente el pago del próximo mes para el usuario.
-    Acceso restringido a administradores.
+    Acceso restringido a administradores e instructores.
     """
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
+
+    def has_permission(self, request, view):
+        # Solo admin o instructor pueden crear pagos
+        return request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor')
 
     def perform_create(self, serializer):
         payment = serializer.save()
@@ -126,6 +130,8 @@ class ApplyUserPaymentView(APIView):
 
     def post(self, request, user_id, payment_amount):
         # Validar mediante serializer que el monto es positivo
+        payment_method = request.data.get('payment_method')
+        description = request.data.get('description')
         serializer = PaymentApplySerializer(data={
             "user_id": user_id,
             "payment_amount": payment_amount
@@ -142,7 +148,12 @@ class ApplyUserPaymentView(APIView):
         if request.user != user and not request.user.is_staff:
             return Response({"detail": "No tienes permiso para aplicar pagos a este usuario."}, status=status.HTTP_403_FORBIDDEN)
 
-        remaining_amount = PaymentService.apply_payment(user, serializer.validated_data["payment_amount"])
+        remaining_amount = PaymentService.apply_payment(
+            user,
+            serializer.validated_data["payment_amount"],
+            payment_method=payment_method,
+            description=description
+        )
         data = {
             "status": "success",
             "message": "Pago aplicado correctamente.",
@@ -166,13 +177,7 @@ class UserPaymentListView(generics.ListAPIView):
     filterset_class = PaymentFilter
     
     def get_queryset(self):
-        # Optimización: Filtrar por usuario y prefetch de transacciones
-        user_id = self.kwargs.get('user_id')
-        
-        # Si el usuario no es admin, solo puede ver sus propios pagos
-        if not self.request.user.is_staff and str(self.request.user.id) != user_id:
-            return Payment.objects.none()
-            
-        return Payment.objects.filter(user_id=user_id).prefetch_related(
+        # Solo pagos del usuario autenticado
+        return Payment.objects.filter(user=self.request.user).prefetch_related(
             Prefetch('transactions', queryset=PaymentTransaction.objects.order_by('-transaction_date'))
         ).order_by('-due_date')

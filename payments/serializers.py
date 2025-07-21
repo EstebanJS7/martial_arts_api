@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Payment, QuotaConfig, PaymentTransaction
 
 class PaymentSerializer(serializers.ModelSerializer):
+    payment_method = serializers.CharField(source='transactions.first.payment_method', read_only=True)
     class Meta:
         model = Payment
         fields = '__all__'
@@ -15,6 +16,7 @@ class QuotaConfigSerializer(serializers.ModelSerializer):
 
 
 class PaymentTransactionSerializer(serializers.ModelSerializer):
+    payment_method = serializers.CharField(read_only=True)
     class Meta:
         model = PaymentTransaction
         fields = '__all__'
