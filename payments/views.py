@@ -18,6 +18,8 @@ from .services import PaymentService
 from users.models import CustomUser
 from .utils import create_next_month_payment
 from .filters import PaymentFilter
+from rest_framework.generics import ListAPIView
+from .serializers import PaymentTransactionSerializer
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 20
@@ -181,3 +183,24 @@ class UserPaymentListView(generics.ListAPIView):
         return Payment.objects.filter(user=self.request.user).prefetch_related(
             Prefetch('transactions', queryset=PaymentTransaction.objects.order_by('-transaction_date'))
         ).order_by('-due_date')
+
+
+class PaymentTransactionListView(ListAPIView):
+    """
+    Lista las transacciones de un pago específico.
+    Acceso solo para el usuario dueño del pago, admin o instructor.
+    """
+    serializer_class = PaymentTransactionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        payment_id = self.kwargs["payment_id"]
+        try:
+            payment = Payment.objects.get(pk=payment_id)
+        except Payment.DoesNotExist:
+            return PaymentTransaction.objects.none()
+        user = self.request.user
+        # Permitir solo si es dueño, admin o instructor
+        if user == payment.user or user.is_staff or (hasattr(user, 'userprofile') and user.userprofile.role == 'instructor'):
+            return PaymentTransaction.objects.filter(payment=payment).order_by('-transaction_date')
+        return PaymentTransaction.objects.none()

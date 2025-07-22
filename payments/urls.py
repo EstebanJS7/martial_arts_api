@@ -6,7 +6,8 @@ from .views import (
     PaymentCreateView,
     QuotaConfigView,
     check_user_due_status_view,
-    UserPaymentListView
+    UserPaymentListView,
+    PaymentTransactionListView
 )
 
 urlpatterns = [
@@ -26,4 +27,7 @@ urlpatterns = [
     
     # Endpoint para que el usuario autenticado consulte sus pagos
     path('my-payments/', UserPaymentListView.as_view(), name='user-payments'),
+    
+    # Endpoint para obtener las transacciones de un pago específico
+    path('<int:payment_id>/transactions/', PaymentTransactionListView.as_view(), name='payment-transactions'),
 ]
