@@ -8,13 +8,15 @@ from .models import (
     ExamSession,
     ExamResult,
     PerformanceStatistics,
-    Discipline
+    Discipline,
+    EventParticipation # Importar modelo de eventos
 )
 from .serializers import (
     EvaluationParameterSerializer,
     ExamSessionSerializer,
     ExamResultSerializer,
-    PerformanceStatisticsSerializer
+    PerformanceStatisticsSerializer,
+    EventParticipationSerializer # Importar el serializer
 )
 from users.permissions import IsAdminUser, IsInstructorUser  # Se asume que existen
 from martial_arts_api.pagination import StandardResultsSetPagination, SmallResultsSetPagination
@@ -144,14 +146,14 @@ class UserPerformanceStatsView(APIView):
         attended_classes = UserClassReservation.objects.filter(
             user=user,
             is_cancelled=False,
-            class_instance__date__lt=timezone.now().date()
+            class_reserved__date__lt=timezone.now().date()
         ).count()
         
         # Total de clases programadas en el pasado
         from classes.models import Class
         total_classes = UserClassReservation.objects.filter(
             user=user,
-            class_instance__date__lt=timezone.now().date()
+            class_reserved__date__lt=timezone.now().date()
         ).count()
         
         # Calcular tasa de asistencia
@@ -161,7 +163,7 @@ class UserPerformanceStatsView(APIView):
         
         # Obtener logros del usuario
         achievements = []
-        user_exam_results = ExamResult.objects.filter(student=user).order_by('-exam_session__date')
+        user_exam_results = ExamResult.objects.filter(participant=user).order_by('-exam_session__exam_date')
         
         for result in user_exam_results[:3]:  # Mostrar solo los 3 más recientes
             achievements.append({
@@ -222,3 +224,13 @@ class UserPerformanceStatsView(APIView):
         }
         
         return Response(response_data)
+
+class EventParticipationListView(generics.ListAPIView):
+    """
+    Lista las participaciones en eventos del usuario autenticado.
+    """
+    serializer_class = EventParticipationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return EventParticipation.objects.filter(user=self.request.user).order_by('-event_date')

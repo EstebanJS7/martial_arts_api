@@ -9,7 +9,8 @@ from .views import (
     ExamResultDetailView,
     MyExamResultsView,
     PerformanceStatisticsView,
-    UserPerformanceStatsView
+    UserPerformanceStatsView,
+    EventParticipationListView, # Agregar la vista para eventos
 )
 
 urlpatterns = [
@@ -33,4 +34,7 @@ urlpatterns = [
     
     # Endpoint para estadísticas de desempeño del usuario
     path('user-stats/', UserPerformanceStatsView.as_view(), name='user-performance-stats'),
+
+    # Endpoint para eventos de desempeño
+    path('events/', EventParticipationListView.as_view(), name='event-participation-list'),
 ]

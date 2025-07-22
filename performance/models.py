@@ -14,6 +14,7 @@ class Discipline(models.Model):
 class EvaluationParameter(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
+    category = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
         return self.name

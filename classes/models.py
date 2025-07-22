@@ -36,6 +36,7 @@ class UserClassReservation(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     class_reserved = models.ForeignKey(Class, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_cancelled = models.BooleanField(default=False)  # Nuevo campo para cancelar reservas
 
     class Meta:
         unique_together = ('user', 'class_reserved')

@@ -7,6 +7,7 @@ from .models import (
     ExamResult,
     ExamResultParameterScore,
     PerformanceStatistics,
+    EventParticipation, # Importar modelo de eventos
 )
 from django.contrib.auth import get_user_model
 
@@ -79,6 +80,13 @@ class ExamSessionSerializer(serializers.ModelSerializer):
         for user in participants:
             ExamResult.objects.get_or_create(exam_session=exam_session, participant=user)
         return exam_session
+
+# Serializador para EventParticipation
+class EventParticipationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventParticipation
+        fields = '__all__'
+
 # Serializador para PerformanceStatistics
 class PerformanceStatisticsSerializer(serializers.ModelSerializer):
     # Se anidan los resultados de examen y las participaciones en eventos
