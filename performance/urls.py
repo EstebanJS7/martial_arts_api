@@ -10,7 +10,16 @@ from .views import (
     MyExamResultsView,
     PerformanceStatisticsView,
     UserPerformanceStatsView,
-    EventParticipationListView, # Agregar la vista para eventos
+    EventCategoryListCreateView,
+    EventCategoryDetailView,
+    EventListCreateView,
+    EventDetailView,
+    EventVerifyView,
+    VerifiedEventsView,
+    EventParticipationListCreateView,
+    EventParticipationDetailView,
+    EventParticipationVerifyView,
+    MyEventParticipationsView,
 )
 
 urlpatterns = [
@@ -35,6 +44,19 @@ urlpatterns = [
     # Endpoint para estadísticas de desempeño del usuario
     path('user-stats/', UserPerformanceStatsView.as_view(), name='user-performance-stats'),
 
-    # Endpoint para eventos de desempeño
-    path('events/', EventParticipationListView.as_view(), name='event-participation-list'),
+    # Endpoints para categorías de eventos (nuevo sistema dinámico)
+    path('event-categories/', EventCategoryListCreateView.as_view(), name='event-category-list-create'),
+    path('event-categories/<int:pk>/', EventCategoryDetailView.as_view(), name='event-category-detail'),
+    
+    # Endpoints para eventos (nuevo sistema)
+    path('events/', EventListCreateView.as_view(), name='event-list-create'),
+    path('events/<int:pk>/', EventDetailView.as_view(), name='event-detail'),
+    path('events/<int:pk>/verify/', EventVerifyView.as_view(), name='event-verify'),
+    path('events/verified/', VerifiedEventsView.as_view(), name='verified-events'),
+    
+    # Endpoints para participaciones en eventos (actualizado)
+    path('participations/', EventParticipationListCreateView.as_view(), name='event-participation-list-create'),
+    path('participations/<int:pk>/', EventParticipationDetailView.as_view(), name='event-participation-detail'),
+    path('participations/<int:pk>/verify/', EventParticipationVerifyView.as_view(), name='event-participation-verify'),
+    path('my-participations/', MyEventParticipationsView.as_view(), name='my-event-participations'),
 ]

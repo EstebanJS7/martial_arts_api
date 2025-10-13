@@ -7,7 +7,9 @@ from .models import (
     ExamResult,
     ExamResultParameterScore,
     PerformanceStatistics,
-    EventParticipation, # Importar modelo de eventos
+    EventCategory,
+    Event,
+    EventParticipation,
 )
 from django.contrib.auth import get_user_model
 
@@ -81,11 +83,48 @@ class ExamSessionSerializer(serializers.ModelSerializer):
             ExamResult.objects.get_or_create(exam_session=exam_session, participant=user)
         return exam_session
 
-# Serializador para EventParticipation
+# Serializador para EventCategory
+class EventCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventCategory
+        fields = ['id', 'name', 'description', 'is_active', 'created_at']
+        read_only_fields = ['created_at']
+
+# Serializador para Event (actualizado)
+class EventSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.email', read_only=True)
+    verified_by_name = serializers.CharField(source='verified_by.email', read_only=True)
+    categories_data = EventCategorySerializer(source='categories', many=True, read_only=True)
+    
+    class Meta:
+        model = Event
+        fields = [
+            'id', 'name', 'description', 'event_date', 'location', 'organizer',
+            'disciplines', 'categories', 'categories_data', 'is_verified', 
+            'created_by', 'created_by_name', 'verified_by', 'verified_by_name', 
+            'created_at', 'verified_at'
+        ]
+        read_only_fields = ['created_by', 'verified_by', 'created_at', 'verified_at']
+
+# Serializador para EventParticipation (actualizado con sistema dinámico)
 class EventParticipationSerializer(serializers.ModelSerializer):
+    event_name = serializers.CharField(source='event.name', read_only=True)
+    event_date = serializers.DateField(source='event.event_date', read_only=True)
+    event_location = serializers.CharField(source='event.location', read_only=True)
+    user_name = serializers.CharField(source='user.email', read_only=True)
+    verified_by_name = serializers.CharField(source='verified_by.email', read_only=True)
+    event_category_name = serializers.CharField(source='event_category.name', read_only=True)
+    result_display = serializers.CharField(source='get_result_display', read_only=True)
+    
     class Meta:
         model = EventParticipation
-        fields = '__all__'
+        fields = [
+            'id', 'event', 'event_name', 'event_date', 'event_location',
+            'user', 'user_name', 'event_category', 'event_category_name', 
+            'result', 'result_display', 'is_verified',
+            'verified_by', 'verified_by_name', 'created_at', 'verified_at'
+        ]
+        read_only_fields = ['user', 'verified_by', 'created_at', 'verified_at']
 
 # Serializador para PerformanceStatistics
 class PerformanceStatisticsSerializer(serializers.ModelSerializer):

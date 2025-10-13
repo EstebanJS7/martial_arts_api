@@ -106,24 +106,89 @@ class PerformanceStatistics(models.Model):
         self.event_participations.set(self.user.event_participations.all())
         self.save()
 
-# Modelo de participación en eventos (ya existente)
-class EventParticipation(models.Model):
-    EVENT_CATEGORIES = [
-        ('First Place', 'First Place'),
-        ('Second Place', 'Second Place'),
-        ('Third Place', 'Third Place'),
-        ('Exhibition', 'Exhibition'),
-    ]
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='event_participations')
-    event_name = models.CharField(max_length=200)
-    disciplines = models.ManyToManyField(Discipline, related_name='event_participations')
-    category = models.CharField(max_length=20, choices=EVENT_CATEGORIES)
-    event_date = models.DateField()
+# Modelo para categorías de eventos
+class EventCategory(models.Model):
+    name = models.CharField(max_length=100, verbose_name="Nombre de la Categoría")
+    description = models.TextField(blank=True, null=True, verbose_name="Descripción")
+    is_active = models.BooleanField(default=True, verbose_name="Activa")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
 
     class Meta:
-        ordering = ['event_date']
-        verbose_name = "Event Participation"
-        verbose_name_plural = "Event Participations"
+        ordering = ['name']
+        verbose_name = "Categoría de Evento"
+        verbose_name_plural = "Categorías de Eventos"
 
     def __str__(self):
-        return f"{self.user.email} - {self.event_name} ({self.category})"
+        return self.name
+
+# Modelo para eventos (actualizado)
+class Event(models.Model):
+    name = models.CharField(max_length=200, verbose_name="Nombre del Evento")
+    description = models.TextField(blank=True, null=True, verbose_name="Descripción")
+    event_date = models.DateField(verbose_name="Fecha del Evento")
+    location = models.CharField(max_length=200, verbose_name="Ubicación")
+    organizer = models.CharField(max_length=200, verbose_name="Organizador")
+    disciplines = models.ManyToManyField(Discipline, related_name='events', blank=True, verbose_name="Disciplinas")
+    categories = models.ManyToManyField(EventCategory, related_name='events', blank=True, verbose_name="Categorías del Evento")
+    is_verified = models.BooleanField(default=False, verbose_name="Verificado")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='created_events',
+        verbose_name="Creado por"
+    )
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='verified_events',
+        verbose_name="Verificado por"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación", null=True)
+    verified_at = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de verificación")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Evento"
+        verbose_name_plural = "Eventos"
+
+    def __str__(self):
+        return f"{self.name} - {self.event_date}"
+
+# Modelo de participación en eventos (actualizado con sistema dinámico)
+class EventParticipation(models.Model):
+    RESULT_CHOICES = [
+        ('1st', 'Primer Lugar'),
+        ('2nd', 'Segundo Lugar'),
+        ('3rd', 'Tercer Lugar'),
+        ('4th', 'Cuarto Lugar'),
+        ('5th', 'Quinto Lugar'),
+        ('participation', 'Participación'),
+        ('exhibition', 'Exhibición'),
+    ]
+    
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='participations', verbose_name="Evento")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='event_participations', verbose_name="Usuario")
+    event_category = models.ForeignKey(EventCategory, on_delete=models.CASCADE, related_name='participations', verbose_name="Categoría del Evento")
+    result = models.CharField(max_length=20, choices=RESULT_CHOICES, verbose_name="Resultado")
+    is_verified = models.BooleanField(default=False, verbose_name="Verificado")
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='verified_participations',
+        verbose_name="Verificado por"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de registro", null=True)
+    verified_at = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de verificación")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Participación en Evento"
+        verbose_name_plural = "Participaciones en Eventos"
+        unique_together = ('event', 'user', 'event_category')  # Un usuario no puede participar en la misma categoría del mismo evento dos veces
+
+    def __str__(self):
+        return f"{self.user.email} - {self.event.name} ({self.event_category.name}) - {self.get_result_display()}"

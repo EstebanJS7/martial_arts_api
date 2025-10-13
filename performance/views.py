@@ -9,14 +9,18 @@ from .models import (
     ExamResult,
     PerformanceStatistics,
     Discipline,
-    EventParticipation # Importar modelo de eventos
+    EventCategory,
+    Event,
+    EventParticipation
 )
 from .serializers import (
     EvaluationParameterSerializer,
     ExamSessionSerializer,
     ExamResultSerializer,
     PerformanceStatisticsSerializer,
-    EventParticipationSerializer # Importar el serializer
+    EventCategorySerializer,
+    EventSerializer,
+    EventParticipationSerializer
 )
 from users.permissions import IsAdminUser, IsInstructorUser  # Se asume que existen
 from martial_arts_api.pagination import StandardResultsSetPagination, SmallResultsSetPagination
@@ -225,7 +229,172 @@ class UserPerformanceStatsView(APIView):
         
         return Response(response_data)
 
-class EventParticipationListView(generics.ListAPIView):
+# --- Endpoints para Event (nuevo sistema) ---
+
+class EventListCreateView(generics.ListCreateAPIView):
+    """
+    Lista todos los eventos o crea un nuevo evento.
+    - GET: Lista eventos (todos para admin/instructor, solo verificados para estudiantes)
+    - POST: Crea un nuevo evento (solo admin/instructor)
+    """
+    serializer_class = EventSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']:
+            # Admin e instructores ven todos los eventos
+            return Event.objects.all().order_by('-created_at')
+        else:
+            # Estudiantes solo ven eventos verificados
+            return Event.objects.filter(is_verified=True).order_by('-event_date')
+
+    def perform_create(self, serializer):
+        # Solo admin e instructores pueden crear eventos
+        user = self.request.user
+        if not (hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']):
+            return Response(
+                {'error': 'No tienes permisos para crear eventos'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save(created_by=self.request.user)
+
+class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Obtiene, actualiza o elimina un evento específico.
+    """
+    serializer_class = EventSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']:
+            return Event.objects.all()
+        else:
+            return Event.objects.filter(is_verified=True)
+
+class EventVerifyView(APIView):
+    """
+    Verifica un evento (solo admin).
+    """
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        try:
+            event = Event.objects.get(pk=pk)
+            if event.is_verified:
+                return Response(
+                    {'error': 'El evento ya está verificado'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            event.is_verified = True
+            event.verified_by = request.user
+            event.verified_at = timezone.now()
+            event.save()
+            
+            serializer = EventSerializer(event)
+            return Response(serializer.data)
+        except Event.DoesNotExist:
+            return Response(
+                {'error': 'Evento no encontrado'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+class VerifiedEventsView(generics.ListAPIView):
+    """
+    Lista solo los eventos verificados (para estudiantes).
+    """
+    serializer_class = EventSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        return Event.objects.filter(is_verified=True).order_by('-event_date')
+
+# --- Endpoints para EventParticipation (actualizado) ---
+
+class EventParticipationListCreateView(generics.ListCreateAPIView):
+    """
+    Lista participaciones en eventos o crea una nueva participación.
+    - GET: Lista participaciones (todas para admin/instructor, solo propias para estudiantes)
+    - POST: Crea una nueva participación
+    """
+    serializer_class = EventParticipationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']:
+            # Admin e instructores ven todas las participaciones
+            return EventParticipation.objects.all().order_by('-created_at')
+        else:
+            # Estudiantes solo ven sus propias participaciones
+            return EventParticipation.objects.filter(user=user).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        # Verificar que el evento esté verificado
+        event_id = self.request.data.get('event')
+        try:
+            event = Event.objects.get(pk=event_id)
+            if not event.is_verified:
+                return Response(
+                    {'error': 'Solo puedes participar en eventos verificados'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Event.DoesNotExist:
+            return Response(
+                {'error': 'Evento no encontrado'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer.save(user=self.request.user)
+
+class EventParticipationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Obtiene, actualiza o elimina una participación específica.
+    """
+    serializer_class = EventParticipationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']:
+            return EventParticipation.objects.all()
+        else:
+            return EventParticipation.objects.filter(user=user)
+
+class EventParticipationVerifyView(APIView):
+    """
+    Verifica una participación en evento (solo admin).
+    """
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        try:
+            participation = EventParticipation.objects.get(pk=pk)
+            if participation.is_verified:
+                return Response(
+                    {'error': 'La participación ya está verificada'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            participation.is_verified = True
+            participation.verified_by = request.user
+            participation.verified_at = timezone.now()
+            participation.save()
+            
+            serializer = EventParticipationSerializer(participation)
+            return Response(serializer.data)
+        except EventParticipation.DoesNotExist:
+            return Response(
+                {'error': 'Participación no encontrada'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+class MyEventParticipationsView(generics.ListAPIView):
     """
     Lista las participaciones en eventos del usuario autenticado.
     """
@@ -233,4 +402,59 @@ class EventParticipationListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return EventParticipation.objects.filter(user=self.request.user).order_by('-event_date')
+        return EventParticipation.objects.filter(user=self.request.user).order_by('-created_at')
+
+# --- Endpoints para EventCategory (nuevo sistema dinámico) ---
+
+class EventCategoryListCreateView(generics.ListCreateAPIView):
+    """
+    Lista todas las categorías de eventos o crea una nueva categoría.
+    - GET: Lista categorías activas
+    - POST: Crea una nueva categoría (solo admin/instructor)
+    """
+    serializer_class = EventCategorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        return EventCategory.objects.filter(is_active=True).order_by('name')
+
+    def perform_create(self, serializer):
+        # Solo admin e instructores pueden crear categorías
+        user = self.request.user
+        if not (hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']):
+            return Response(
+                {'error': 'No tienes permisos para crear categorías de eventos'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save()
+
+class EventCategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Obtiene, actualiza o elimina una categoría específica.
+    """
+    serializer_class = EventCategorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return EventCategory.objects.all()
+
+    def perform_update(self, serializer):
+        # Solo admin e instructores pueden actualizar categorías
+        user = self.request.user
+        if not (hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']):
+            return Response(
+                {'error': 'No tienes permisos para actualizar categorías de eventos'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # Solo admin puede eliminar categorías
+        user = self.request.user
+        if not (hasattr(user, 'userprofile') and user.userprofile.role == 'admin'):
+            return Response(
+                {'error': 'Solo los administradores pueden eliminar categorías de eventos'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        instance.delete()
