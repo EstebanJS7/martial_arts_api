@@ -145,3 +145,5 @@ class Migration(migrations.Migration):
             unique_together={('event', 'user', 'event_category')},
         ),
     ]
+
+
