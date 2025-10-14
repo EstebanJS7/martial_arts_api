@@ -1,4 +1,7 @@
-from rest_framework import generics
+from rest_framework import generics, status
+from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from django.db.models import Avg, Count
 from .models import BlogPost, Comment, Rating
 from .serializers import BlogPostSerializer, CommentSerializer, RatingSerializer
 from users.permissions import IsAuthorOrAdmin
@@ -44,15 +47,34 @@ class CommentView(generics.ListCreateAPIView):
         # Corrige el nombre del campo: usa 'user' en lugar de 'author'
         serializer.save(user=self.request.user, blog_post_id=self.kwargs['pk'])
 
-class RatingView(generics.CreateAPIView):
+class RatingView(generics.ListCreateAPIView):
+    """
+    Vista para listar y crear ratings de un post específico.
+    Si el usuario ya tiene un rating, se actualiza en lugar de crear uno nuevo.
+    """
     serializer_class = RatingSerializer
     permission_classes = [IsAuthenticated]
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user, blog_post_id=self.kwargs['pk'])
-
     def get_queryset(self):
         return Rating.objects.filter(blog_post_id=self.kwargs['pk'], user=self.request.user)
+
+    def perform_create(self, serializer):
+        blog_post_id = self.kwargs['pk']
+        user = self.request.user
+        
+        # Verificar si el usuario ya tiene un rating para este post
+        existing_rating = Rating.objects.filter(
+            blog_post_id=blog_post_id, 
+            user=user
+        ).first()
+        
+        if existing_rating:
+            # Actualizar el rating existente
+            existing_rating.score = serializer.validated_data['score']
+            existing_rating.save()
+        else:
+            # Crear nuevo rating
+            serializer.save(user=user, blog_post_id=blog_post_id)
 
 class FeaturedBlogPostsView(generics.ListAPIView):
     """
@@ -80,3 +102,112 @@ class FeaturedBlogPostsView(generics.ListAPIView):
             featured_posts = list(featured_posts) + list(recent_posts)
         
         return featured_posts
+
+
+# Nuevas vistas para funcionalidad completa
+
+class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Vista para obtener, actualizar y eliminar un comentario específico.
+    """
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Solo permitir acceso a comentarios del usuario autenticado
+        return Comment.objects.filter(user=self.request.user)
+
+    def perform_update(self, serializer):
+        # Asegurar que solo el autor del comentario pueda actualizarlo
+        if serializer.instance.user != self.request.user:
+            return Response(
+                {'error': 'No tienes permisos para actualizar este comentario'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # Asegurar que solo el autor del comentario pueda eliminarlo
+        if instance.user != self.request.user:
+            return Response(
+                {'error': 'No tienes permisos para eliminar este comentario'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        instance.delete()
+
+
+class RatingDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Vista para obtener, actualizar y eliminar un rating específico.
+    """
+    serializer_class = RatingSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Solo permitir acceso a ratings del usuario autenticado
+        return Rating.objects.filter(user=self.request.user)
+
+    def perform_update(self, serializer):
+        # Asegurar que solo el autor del rating pueda actualizarlo
+        if serializer.instance.user != self.request.user:
+            return Response(
+                {'error': 'No tienes permisos para actualizar este rating'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # Asegurar que solo el autor del rating pueda eliminarlo
+        if instance.user != self.request.user:
+            return Response(
+                {'error': 'No tienes permisos para eliminar este rating'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        instance.delete()
+
+
+class BlogPostRatingsView(generics.ListAPIView):
+    """
+    Vista para obtener todos los ratings de un post específico.
+    """
+    serializer_class = RatingSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return Rating.objects.filter(blog_post_id=self.kwargs['pk'])
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def blog_post_stats(request, pk):
+    """
+    Vista para obtener estadísticas de un post específico.
+    """
+    try:
+        blog_post = BlogPost.objects.get(pk=pk)
+    except BlogPost.DoesNotExist:
+        return Response(
+            {'error': 'Post no encontrado'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Calcular estadísticas
+    ratings = Rating.objects.filter(blog_post=blog_post)
+    comments = Comment.objects.filter(blog_post=blog_post)
+    
+    stats = {
+        'post_id': blog_post.id,
+        'post_title': blog_post.title,
+        'total_ratings': ratings.count(),
+        'average_rating': ratings.aggregate(avg_rating=Avg('score'))['avg_rating'] or 0,
+        'total_comments': comments.count(),
+        'rating_distribution': {
+            '5_stars': ratings.filter(score=5).count(),
+            '4_stars': ratings.filter(score=4).count(),
+            '3_stars': ratings.filter(score=3).count(),
+            '2_stars': ratings.filter(score=2).count(),
+            '1_star': ratings.filter(score=1).count(),
+        }
+    }
+
+    return Response(stats)
