@@ -78,8 +78,8 @@ class LogoutView(APIView):
             return Response(status=400)
         
 class UserListView(generics.ListCreateAPIView):
-    queryset = CustomUser.objects.all()
-    serializer_class = UserSerializer
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
     permission_classes = [IsAdminUser]
 
 class PasswordResetRequestView(APIView):

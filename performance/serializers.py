@@ -111,10 +111,21 @@ class EventParticipationSerializer(serializers.ModelSerializer):
     event_name = serializers.CharField(source='event.name', read_only=True)
     event_date = serializers.DateField(source='event.event_date', read_only=True)
     event_location = serializers.CharField(source='event.location', read_only=True)
-    user_name = serializers.CharField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
     verified_by_name = serializers.CharField(source='verified_by.email', read_only=True)
     event_category_name = serializers.CharField(source='event_category.name', read_only=True)
     result_display = serializers.CharField(source='get_result_display', read_only=True)
+    
+    def get_user_name(self, obj):
+        """Devuelve el nombre completo del usuario o el email si no tiene nombre"""
+        if obj.user.first_name and obj.user.last_name:
+            return f"{obj.user.first_name} {obj.user.last_name}"
+        elif obj.user.first_name:
+            return obj.user.first_name
+        elif obj.user.last_name:
+            return obj.user.last_name
+        else:
+            return obj.user.email
     
     class Meta:
         model = EventParticipation
