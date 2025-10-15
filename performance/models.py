@@ -28,6 +28,7 @@ class ExamSession(models.Model):
       - La fecha del examen.
       - La lista de participantes (estudiantes).
       - El instructor o administrador que organiza la sesión.
+      - Los parámetros de evaluación a calificar.
     """
     belt_level = models.CharField(max_length=50)  # Ej: "Black Belt"
     exam_date = models.DateField()
@@ -40,6 +41,12 @@ class ExamSession(models.Model):
     participants = models.ManyToManyField(
         settings.AUTH_USER_MODEL, 
         related_name='exam_sessions'
+    )
+    evaluation_parameters = models.ManyToManyField(
+        EvaluationParameter,
+        related_name='exam_sessions',
+        blank=True,
+        help_text="Parámetros de evaluación que se calificarán en esta sesión"
     )
 
     class Meta:

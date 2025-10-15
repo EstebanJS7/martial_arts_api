@@ -7,6 +7,7 @@ from .models import (
     EvaluationParameter,
     ExamSession,
     ExamResult,
+    ExamResultParameterScore,
     PerformanceStatistics,
     Discipline,
     EventCategory,
@@ -170,11 +171,17 @@ class UserPerformanceStatsView(APIView):
         user_exam_results = ExamResult.objects.filter(participant=user).order_by('-exam_session__exam_date')
         
         for result in user_exam_results[:3]:  # Mostrar solo los 3 más recientes
+            # Calcular puntuación promedio si hay calificaciones
+            avg_score = 0
+            if result.parameter_scores.exists():
+                total_score = sum(score.score for score in result.parameter_scores.all())
+                avg_score = total_score / result.parameter_scores.count()
+            
             achievements.append({
                 'id': result.id,
-                'title': f"Examen de {result.exam_session.title}",
-                'description': f"Calificación: {result.final_score}/100",
-                'dateEarned': result.exam_session.date.strftime('%Y-%m-%d'),
+                'title': f"Examen de {result.exam_session.belt_level}",
+                'description': f"Calificación: {avg_score:.1f}/10" if result.graded else "Pendiente de calificación",
+                'dateEarned': result.exam_session.exam_date.strftime('%Y-%m-%d'),
                 'icon': 'trophy'  # Icono por defecto
             })
         
@@ -197,18 +204,18 @@ class UserPerformanceStatsView(APIView):
                 
                 for param in parameters:
                     try:
-                        score = ParameterScore.objects.get(
+                        score = ExamResultParameterScore.objects.get(
                             exam_result=latest_result,
                             parameter=param
                         ).score
                         parameter_scores.append(score)
-                        max_level = max(max_level, 5)  # Suponemos que el nivel máximo es 5
-                    except ParameterScore.DoesNotExist:
+                        max_level = max(max_level, 10)  # Nivel máximo es 10
+                    except ExamResultParameterScore.DoesNotExist:
                         pass
                 
                 if parameter_scores:
                     avg_score = sum(parameter_scores) / len(parameter_scores)
-                    level = int(avg_score / 20)  # Convertir puntuación (0-100) a nivel (0-5)
+                    level = int(avg_score / 2)  # Convertir puntuación (0-10) a nivel (0-5)
                     
                     progress_categories.append({
                         'category': category,
@@ -402,7 +409,22 @@ class MyEventParticipationsView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return EventParticipation.objects.filter(user=self.request.user).order_by('-created_at')
+        user = self.request.user
+        print(f"🔍 MyEventParticipationsView - User: {user.id} ({user.email})")
+        
+        # Obtener todas las participaciones para debug
+        all_participations = EventParticipation.objects.all()
+        print(f"🔍 Total participations in DB: {all_participations.count()}")
+        
+        # Obtener participaciones del usuario
+        user_participations = EventParticipation.objects.filter(user=user)
+        print(f"🔍 User participations: {user_participations.count()}")
+        
+        # Debug: mostrar detalles de las participaciones
+        for participation in all_participations:
+            print(f"🔍 Participation {participation.id}: user={participation.user.id} ({participation.user.email}), event={participation.event.name}")
+        
+        return user_participations.order_by('-created_at')
 
 # --- Endpoints para EventCategory (nuevo sistema dinámico) ---
 

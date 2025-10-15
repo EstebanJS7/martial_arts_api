@@ -37,14 +37,29 @@ class ExamResultParameterScoreSerializer(serializers.ModelSerializer):
 # Serializador para el resultado del examen de un participante
 class ExamResultSerializer(serializers.ModelSerializer):
     parameter_scores = ExamResultParameterScoreSerializer(many=True)
+    participant_name = serializers.SerializerMethodField()
+    belt_level = serializers.CharField(source='exam_session.belt_level', read_only=True)
+
+    def get_participant_name(self, obj):
+        """Devuelve el nombre completo del participante o el email si no tiene nombre"""
+        if obj.participant.first_name and obj.participant.last_name:
+            return f"{obj.participant.first_name} {obj.participant.last_name}"
+        elif obj.participant.first_name:
+            return obj.participant.first_name
+        elif obj.participant.last_name:
+            return obj.participant.last_name
+        else:
+            return obj.participant.email
 
     class Meta:
         model = ExamResult
-        fields = ['id', 'exam_session', 'participant', 'graded', 'parameter_scores']
-        read_only_fields = ['participant', 'graded']
+        fields = ['id', 'exam_session', 'participant', 'participant_name', 'belt_level', 'graded', 'parameter_scores']
+        read_only_fields = ['graded']  # Solo graded es read-only, participant debe ser escribible
 
     def create(self, validated_data):
         scores_data = validated_data.pop('parameter_scores')
+        # Establecer graded=True cuando se crea con calificaciones
+        validated_data['graded'] = True
         exam_result = ExamResult.objects.create(**validated_data)
         for score_data in scores_data:
             ExamResultParameterScore.objects.create(exam_result=exam_result, **score_data)
@@ -52,6 +67,9 @@ class ExamResultSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         scores_data = validated_data.pop('parameter_scores', None)
+        # Marcar como calificado si se están actualizando las puntuaciones
+        if scores_data is not None:
+            validated_data['graded'] = True
         # Actualizamos otros campos si es necesario
         instance = super().update(instance, validated_data)
         if scores_data is not None:
@@ -68,16 +86,19 @@ class ExamResultSerializer(serializers.ModelSerializer):
 # Serializador para la sesión de examen
 class ExamSessionSerializer(serializers.ModelSerializer):
     participants = serializers.PrimaryKeyRelatedField(many=True, queryset=User.objects.all())
+    evaluation_parameters = serializers.PrimaryKeyRelatedField(many=True, queryset=EvaluationParameter.objects.all(), required=False)
 
     class Meta:
         model = ExamSession
-        fields = ['id', 'belt_level', 'exam_date', 'created_by', 'participants']
+        fields = ['id', 'belt_level', 'exam_date', 'created_by', 'participants', 'evaluation_parameters']
         read_only_fields = ['created_by']
 
     def create(self, validated_data):
         participants = validated_data.pop('participants', [])
+        evaluation_parameters = validated_data.pop('evaluation_parameters', [])
         exam_session = ExamSession.objects.create(**validated_data)
         exam_session.participants.set(participants)
+        exam_session.evaluation_parameters.set(evaluation_parameters)
         # Opcional: Crear automáticamente un ExamResult para cada participante
         for user in participants:
             ExamResult.objects.get_or_create(exam_session=exam_session, participant=user)
