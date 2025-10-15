@@ -31,13 +31,13 @@ from django.utils import timezone
 class EvaluationParameterListCreateView(generics.ListCreateAPIView):
     queryset = EvaluationParameter.objects.all().order_by('name')
     serializer_class = EvaluationParameterSerializer
-    permission_classes = [IsAdminUser]  # Solo admin puede gestionar parámetros
+    permission_classes = [IsAdminUser | IsInstructorUser]  # Admin e instructores pueden gestionar parámetros
     pagination_class = SmallResultsSetPagination
 
 class EvaluationParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = EvaluationParameter.objects.all()
     serializer_class = EvaluationParameterSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdminUser | IsInstructorUser]
 
 # --- Endpoints para ExamSession ---
 

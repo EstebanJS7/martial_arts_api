@@ -19,7 +19,7 @@ User = get_user_model()
 class EvaluationParameterSerializer(serializers.ModelSerializer):
     class Meta:
         model = EvaluationParameter
-        fields = ['id', 'name', 'description']
+        fields = ['id', 'name', 'description', 'category']
 
 # Serializador para las puntuaciones en un resultado de examen
 class ExamResultParameterScoreSerializer(serializers.ModelSerializer):
