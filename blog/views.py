@@ -2,8 +2,8 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from django.db.models import Avg, Count
-from .models import BlogPost, Comment, Rating
-from .serializers import BlogPostSerializer, CommentSerializer, RatingSerializer
+from .models import BlogPost, Comment, Rating, Category, Tag
+from .serializers import BlogPostSerializer, CommentSerializer, RatingSerializer, CategorySerializer, TagSerializer
 from users.permissions import IsAuthorOrAdmin
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
 from django.utils.decorators import method_decorator
@@ -211,3 +211,110 @@ def blog_post_stats(request, pk):
     }
 
     return Response(stats)
+
+
+# Views para Category y Tag
+
+class CategoryListView(generics.ListCreateAPIView):
+    """
+    Vista para listar y crear categorías.
+    """
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = StandardResultsSetPagination
+
+class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Vista para obtener, actualizar y eliminar una categoría específica.
+    """
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+class TagListView(generics.ListCreateAPIView):
+    """
+    Vista para listar y crear tags.
+    """
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = StandardResultsSetPagination
+
+class TagDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Vista para obtener, actualizar y eliminar un tag específico.
+    """
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def category_posts(request, category_id):
+    """
+    Vista para obtener todos los posts de una categoría específica.
+    """
+    try:
+        category = Category.objects.get(id=category_id)
+        posts = BlogPost.objects.filter(category=category).order_by('-created_at')
+        
+        # Paginación manual
+        page_size = int(request.GET.get('page_size', 10))
+        page = int(request.GET.get('page', 1))
+        
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        posts_page = posts[start:end]
+        serializer = BlogPostSerializer(posts_page, many=True)
+        
+        return Response({
+            'category': CategorySerializer(category).data,
+            'posts': serializer.data,
+            'total_posts': posts.count(),
+            'page': page,
+            'page_size': page_size,
+            'has_next': end < posts.count(),
+            'has_previous': page > 1
+        })
+    except Category.DoesNotExist:
+        return Response(
+            {'error': 'Categoría no encontrada'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def tag_posts(request, tag_id):
+    """
+    Vista para obtener todos los posts de un tag específico.
+    """
+    try:
+        tag = Tag.objects.get(id=tag_id)
+        posts = BlogPost.objects.filter(tags=tag).order_by('-created_at')
+        
+        # Paginación manual
+        page_size = int(request.GET.get('page_size', 10))
+        page = int(request.GET.get('page', 1))
+        
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        posts_page = posts[start:end]
+        serializer = BlogPostSerializer(posts_page, many=True)
+        
+        return Response({
+            'tag': TagSerializer(tag).data,
+            'posts': serializer.data,
+            'total_posts': posts.count(),
+            'page': page,
+            'page_size': page_size,
+            'has_next': end < posts.count(),
+            'has_previous': page > 1
+        })
+    except Tag.DoesNotExist:
+        return Response(
+            {'error': 'Tag no encontrado'},
+            status=status.HTTP_404_NOT_FOUND
+        )

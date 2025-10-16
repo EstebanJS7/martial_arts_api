@@ -1,7 +1,9 @@
 from django.urls import path
 from .views import (
     BlogPostListView, BlogPostDetailView, CommentView, RatingView, FeaturedBlogPostsView,
-    CommentDetailView, RatingDetailView, BlogPostRatingsView, blog_post_stats
+    CommentDetailView, RatingDetailView, BlogPostRatingsView, blog_post_stats,
+    CategoryListView, CategoryDetailView, TagListView, TagDetailView,
+    category_posts, tag_posts
 )
 
 urlpatterns = [
@@ -31,4 +33,14 @@ urlpatterns = [
     
     # Endpoint para obtener las entradas destacadas del blog
     path('featured/', FeaturedBlogPostsView.as_view(), name='featured-posts'),
+    
+    # Endpoints para categorías
+    path('categories/', CategoryListView.as_view(), name='category-list'),
+    path('categories/<int:pk>/', CategoryDetailView.as_view(), name='category-detail'),
+    path('categories/<int:category_id>/posts/', category_posts, name='category-posts'),
+    
+    # Endpoints para tags
+    path('tags/', TagListView.as_view(), name='tag-list'),
+    path('tags/<int:pk>/', TagDetailView.as_view(), name='tag-detail'),
+    path('tags/<int:tag_id>/posts/', tag_posts, name='tag-posts'),
 ]
