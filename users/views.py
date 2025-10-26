@@ -59,9 +59,34 @@ class LoginView(APIView):
         if form.is_valid():
             user = form.get_user()
             refresh = RefreshToken.for_user(user)
+            
+            # Obtener el perfil del usuario
+            try:
+                user_profile = user.userprofile
+                user_data = {
+                    'id': user.id,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'role': user_profile.role,
+                    'dojo': user_profile.dojo,
+                }
+            except UserProfile.DoesNotExist:
+                # Si no existe el perfil, crear uno básico
+                user_profile = UserProfile.objects.create(user=user)
+                user_data = {
+                    'id': user.id,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'role': user_profile.role,
+                    'dojo': user_profile.dojo,
+                }
+            
             return Response({
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
+                'user': user_data,
             })
         return Response(form.errors, status=400)
     
