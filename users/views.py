@@ -313,3 +313,160 @@ class VerifyTokenView(APIView):
                 'dojo': user.userprofile.dojo
             }
         })
+
+class UserStatsView(APIView):
+    """
+    Vista para obtener estadísticas de usuarios.
+    Solo accesible por administradores.
+    """
+    permission_classes = [IsAdminUser]
+    
+    def get(self, request):
+        try:
+            # Obtener estadísticas básicas
+            total_users = UserProfile.objects.count()
+            admin_count = UserProfile.objects.filter(role='admin').count()
+            instructor_count = UserProfile.objects.filter(role='instructor').count()
+            student_count = UserProfile.objects.filter(role='student').count()
+            
+            # Usuarios activos e inactivos
+            active_users = UserProfile.objects.filter(user__is_active=True).count()
+            inactive_users = UserProfile.objects.filter(user__is_active=False).count()
+            
+            # Nuevos usuarios este mes (simplificado)
+            from django.utils import timezone
+            from datetime import timedelta
+            month_ago = timezone.now() - timedelta(days=30)
+            new_users_this_month = UserProfile.objects.filter(
+                enrollment_date__gte=month_ago.date()
+            ).count()
+            
+            stats = {
+                'total_users': total_users,
+                'admin_count': admin_count,
+                'instructor_count': instructor_count,
+                'student_count': student_count,
+                'active_users': active_users,
+                'inactive_users': inactive_users,
+                'new_users_this_month': new_users_this_month,
+            }
+            
+            return Response(stats, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo estadísticas de usuarios: {str(e)}")
+            return Response(
+                {'success': False, 'message': 'Error al obtener estadísticas'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class ActivateUserView(APIView):
+    """
+    Vista para activar un usuario.
+    Solo accesible por administradores.
+    """
+    permission_classes = [IsAdminUser]
+    
+    def post(self, request, user_id):
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            
+            # Activar el usuario
+            user.is_active = True
+            user.save()
+            
+            return Response(
+                {'success': True, 'message': 'Usuario activado correctamente'},
+                status=status.HTTP_200_OK
+            )
+            
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'success': False, 'message': 'Usuario no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error activando usuario {user_id}: {str(e)}")
+            return Response(
+                {'success': False, 'message': 'Error al activar usuario'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class DeactivateUserView(APIView):
+    """
+    Vista para desactivar un usuario.
+    Solo accesible por administradores.
+    """
+    permission_classes = [IsAdminUser]
+    
+    def post(self, request, user_id):
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            
+            # No permitir desactivar al usuario actual
+            if user == request.user:
+                return Response(
+                    {'success': False, 'message': 'No puedes desactivar tu propia cuenta'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Desactivar el usuario
+            user.is_active = False
+            user.save()
+            
+            return Response(
+                {'success': True, 'message': 'Usuario desactivado correctamente'},
+                status=status.HTTP_200_OK
+            )
+            
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'success': False, 'message': 'Usuario no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error desactivando usuario {user_id}: {str(e)}")
+            return Response(
+                {'success': False, 'message': 'Error al desactivar usuario'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class DeleteUserView(APIView):
+    """
+    Vista para eliminar un usuario (soft delete).
+    Solo accesible por administradores.
+    """
+    permission_classes = [IsAdminUser]
+    
+    def delete(self, request, user_id):
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            
+            # No permitir eliminar al usuario actual
+            if user == request.user:
+                return Response(
+                    {'success': False, 'message': 'No puedes eliminar tu propia cuenta'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Soft delete - marcar como eliminado
+            user.is_active = False
+            user.email = f"deleted_{user_id}_{user.email}"
+            user.save()
+            
+            return Response(
+                {'success': True, 'message': 'Usuario eliminado correctamente'},
+                status=status.HTTP_200_OK
+            )
+            
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'success': False, 'message': 'Usuario no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error eliminando usuario {user_id}: {str(e)}")
+            return Response(
+                {'success': False, 'message': 'Error al eliminar usuario'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
