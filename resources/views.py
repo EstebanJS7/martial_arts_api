@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.conf import settings
@@ -85,12 +85,16 @@ class ResourceDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
     
     def check_object_permissions(self, request, obj):
-        if request.method in ['PUT', 'PATCH', 'DELETE'] and not (
-            request.user.is_staff or 
-            request.user.is_instructor or 
-            request.user == obj.author
-        ):
-            self.permission_denied(request)
+        if request.method in ['PUT', 'PATCH', 'DELETE']:
+            # Verificar si el usuario es admin o instructor
+            user_profile = getattr(request.user, 'userprofile', None)
+            is_admin_or_instructor = (
+                request.user.is_staff or 
+                (user_profile and user_profile.role in ['admin', 'instructor']) or
+                request.user == obj.author
+            )
+            if not is_admin_or_instructor:
+                self.permission_denied(request)
         return super().check_object_permissions(request, obj)
 
 class FeaturedResourcesView(generics.ListAPIView):
@@ -114,7 +118,12 @@ class ResourceTagListView(generics.ListCreateAPIView):
     
     def check_permissions(self, request):
         if request.method != 'GET':
-            if not (request.user.is_authenticated and (request.user.is_staff or request.user.is_instructor)):
+            user_profile = getattr(request.user, 'userprofile', None)
+            is_admin_or_instructor = (
+                request.user.is_authenticated and 
+                (request.user.is_staff or (user_profile and user_profile.role in ['admin', 'instructor']))
+            )
+            if not is_admin_or_instructor:
                 self.permission_denied(request)
         return super().check_permissions(request)
 
@@ -124,7 +133,14 @@ def resource_download_view(request, pk):
     resource = get_object_or_404(Resource, pk=pk)
     
     # Verificar si el recurso es premium y si el usuario tiene acceso
-    if resource.is_premium and not (request.user.is_staff or request.user.is_instructor or request.user.has_premium_access):
+    user_profile = getattr(request.user, 'userprofile', None)
+    has_premium_access = (
+        request.user.is_staff or 
+        (user_profile and user_profile.role in ['admin', 'instructor']) or
+        getattr(request.user, 'has_premium_access', False)
+    )
+    
+    if resource.is_premium and not has_premium_access:
         return Response(
             {"detail": "Este recurso requiere acceso premium."},
             status=status.HTTP_403_FORBIDDEN
@@ -135,9 +151,17 @@ def resource_download_view(request, pk):
     
     # Devolver la URL del archivo
     if resource.file:
-        return Response({"download_url": request.build_absolute_uri(resource.file.url)})
+        return Response({
+            "download_url": request.build_absolute_uri(resource.file.url),
+            "filename": resource.file.name.split('/')[-1],
+            "file_size": resource.file_size
+        })
     elif resource.url:
-        return Response({"download_url": resource.url})
+        return Response({
+            "download_url": resource.url,
+            "filename": resource.title,
+            "file_size": None
+        })
     else:
         return Response(
             {"detail": "Este recurso no tiene archivo o URL para descargar."},
@@ -150,3 +174,58 @@ def resource_view_view(request, pk):
     resource = get_object_or_404(Resource, pk=pk)
     resource.increment_views()
     return Response({"detail": "Vista registrada correctamente."}, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def resource_stats_view(request):
+    """
+    Vista para obtener estadísticas de recursos.
+    Solo accesible por administradores e instructores.
+    """
+    user_profile = getattr(request.user, 'userprofile', None)
+    is_admin_or_instructor = (
+        request.user.is_staff or 
+        (user_profile and user_profile.role in ['admin', 'instructor'])
+    )
+    
+    if not is_admin_or_instructor:
+        return Response(
+            {"detail": "No tienes permisos para ver estas estadísticas."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Calcular estadísticas
+    total_resources = Resource.objects.count()
+    total_views = Resource.objects.aggregate(total=models.Sum('views_count'))['total'] or 0
+    total_downloads = Resource.objects.aggregate(total=models.Sum('downloads_count'))['total'] or 0
+    featured_resources = Resource.objects.filter(is_featured=True).count()
+    premium_resources = Resource.objects.filter(is_premium=True).count()
+    
+    # Recursos por tipo
+    resources_by_type = {}
+    for type_choice in ResourceType.choices:
+        count = Resource.objects.filter(type=type_choice[0]).count()
+        resources_by_type[type_choice[1]] = count
+    
+    # Recursos por categoría
+    resources_by_category = {}
+    for category_choice in ResourceCategory.choices:
+        count = Resource.objects.filter(category=category_choice[0]).count()
+        resources_by_category[category_choice[1]] = count
+    
+    # Recursos más populares
+    popular_resources = Resource.objects.order_by('-views_count')[:5]
+    popular_resources_data = ResourceListSerializer(popular_resources, many=True).data
+    
+    stats = {
+        'total_resources': total_resources,
+        'total_views': total_views,
+        'total_downloads': total_downloads,
+        'featured_resources': featured_resources,
+        'premium_resources': premium_resources,
+        'resources_by_type': resources_by_type,
+        'resources_by_category': resources_by_category,
+        'popular_resources': popular_resources_data,
+    }
+    
+    return Response(stats, status=status.HTTP_200_OK)

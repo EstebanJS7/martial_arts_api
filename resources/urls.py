@@ -6,7 +6,8 @@ from .views import (
     FeaturedResourcesView,
     ResourceTagListView,
     resource_download_view,
-    resource_view_view
+    resource_view_view,
+    resource_stats_view
 )
 
 urlpatterns = [
@@ -24,4 +25,7 @@ urlpatterns = [
     # Endpoint para descargas y vistas
     path('<int:pk>/download/', resource_download_view, name='resource-download'),
     path('<int:pk>/view/', resource_view_view, name='resource-view'),
+    
+    # Endpoint para estadísticas
+    path('stats/', resource_stats_view, name='resource-stats'),
 ]

@@ -11,9 +11,21 @@ class ResourceTagSerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
 class ResourceAuthorSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email']
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'name']
+    
+    def get_name(self, obj):
+        if obj.first_name and obj.last_name:
+            return f"{obj.first_name} {obj.last_name}"
+        elif obj.first_name:
+            return obj.first_name
+        elif obj.last_name:
+            return obj.last_name
+        else:
+            return obj.username
 
 class ResourceListSerializer(serializers.ModelSerializer):
     author = ResourceAuthorSerializer(read_only=True)
