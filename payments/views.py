@@ -11,6 +11,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import Payment, QuotaConfig, PaymentTransaction
 from .serializers import (
     PaymentSerializer, 
+    PaymentCreateSerializer,
     QuotaConfigSerializer, 
     PaymentApplySerializer
 )
@@ -67,7 +68,7 @@ class PaymentCreateView(generics.CreateAPIView):
     Acceso restringido a administradores e instructores.
     """
     queryset = Payment.objects.all()
-    serializer_class = PaymentSerializer
+    serializer_class = PaymentCreateSerializer
     permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
 
     def has_permission(self, request, view):
