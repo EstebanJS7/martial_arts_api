@@ -22,9 +22,9 @@ class ResourceCategory(models.TextChoices):
     OTHER = 'OTHER', _('Otro')
 
 class ResourceLevel(models.TextChoices):
-    BEGINNER = 'BEGINNER', _('Principiante')
-    INTERMEDIATE = 'INTERMEDIATE', _('Intermedio')
-    ADVANCED = 'ADVANCED', _('Avanzado')
+    KYU_A = 'KYU_A', _('Kyu A')
+    KYU_B = 'KYU_B', _('Kyu B')
+    DAN = 'DAN', _('Dan')
     ALL = 'ALL', _('Todos los niveles')
 
 class ResourceTag(models.Model):

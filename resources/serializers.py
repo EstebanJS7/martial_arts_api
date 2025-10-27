@@ -24,8 +24,10 @@ class ResourceAuthorSerializer(serializers.ModelSerializer):
             return obj.first_name
         elif obj.last_name:
             return obj.last_name
-        else:
+        elif obj.username:
             return obj.username
+        else:
+            return obj.email.split('@')[0] if obj.email else "Usuario"
 
 class ResourceListSerializer(serializers.ModelSerializer):
     author = ResourceAuthorSerializer(read_only=True)

@@ -38,7 +38,7 @@ class ResourceListView(generics.ListAPIView):
     serializer_class = ResourceListSerializer
     pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['type', 'category', 'level', 'is_premium', 'is_featured']
+    filterset_fields = ['type', 'category', 'level', 'is_featured']
     search_fields = ['title', 'description']
     ordering_fields = ['created_at', 'views_count', 'downloads_count']
     ordering = ['-created_at']
@@ -132,20 +132,6 @@ class ResourceTagListView(generics.ListCreateAPIView):
 def resource_download_view(request, pk):
     resource = get_object_or_404(Resource, pk=pk)
     
-    # Verificar si el recurso es premium y si el usuario tiene acceso
-    user_profile = getattr(request.user, 'userprofile', None)
-    has_premium_access = (
-        request.user.is_staff or 
-        (user_profile and user_profile.role in ['admin', 'instructor']) or
-        getattr(request.user, 'has_premium_access', False)
-    )
-    
-    if resource.is_premium and not has_premium_access:
-        return Response(
-            {"detail": "Este recurso requiere acceso premium."},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
     # Incrementar contador de descargas
     resource.increment_downloads()
     
@@ -199,7 +185,6 @@ def resource_stats_view(request):
     total_views = Resource.objects.aggregate(total=models.Sum('views_count'))['total'] or 0
     total_downloads = Resource.objects.aggregate(total=models.Sum('downloads_count'))['total'] or 0
     featured_resources = Resource.objects.filter(is_featured=True).count()
-    premium_resources = Resource.objects.filter(is_premium=True).count()
     
     # Recursos por tipo
     resources_by_type = {}
@@ -222,7 +207,6 @@ def resource_stats_view(request):
         'total_views': total_views,
         'total_downloads': total_downloads,
         'featured_resources': featured_resources,
-        'premium_resources': premium_resources,
         'resources_by_type': resources_by_type,
         'resources_by_category': resources_by_category,
         'popular_resources': popular_resources_data,
