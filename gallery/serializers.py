@@ -2,10 +2,17 @@ from rest_framework import serializers
 from .models import Gallery, GalleryItem
 
 class GallerySerializer(serializers.ModelSerializer):
+    items = serializers.SerializerMethodField()
+    
     class Meta:
         model = Gallery
-        fields = ['id', 'title', 'description', 'created_at']
+        fields = ['id', 'title', 'description', 'cover_image', 'created_at', 'items']
         read_only_fields = ['created_at']
+    
+    def get_items(self, obj):
+        # Usar la relación inversa directamente
+        items = obj.galleryitem_set.all().order_by('-uploaded_at')
+        return GalleryItemSerializer(items, many=True, context=self.context).data
 
 class GalleryItemSerializer(serializers.ModelSerializer):
     class Meta:
