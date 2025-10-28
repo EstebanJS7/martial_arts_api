@@ -5,6 +5,22 @@ from datetime import date
 class QuotaConfig(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     due_day = models.IntegerField(default=10)  # Día de vencimiento de cada mes
+    is_active = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        # Si esta configuración se está marcando como activa,
+        # desactivar todas las demás configuraciones
+        if self.is_active:
+            QuotaConfig.objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_active_config(cls):
+        """Obtiene la configuración de cuota activa actual"""
+        try:
+            return cls.objects.get(is_active=True)
+        except cls.DoesNotExist:
+            return None
 
     def __str__(self):
         return f"Cuota de {self.amount} con vencimiento el día {self.due_day} de cada mes."
@@ -21,14 +37,15 @@ class Payment(models.Model):
     is_fully_paid = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
-        # Obtener la configuración de cuota más reciente
-        current_quota = QuotaConfig.objects.latest('id')
-        # Completar la fecha de vencimiento si no se proporciona
-        if not self.due_date:
-            self.due_date = self._get_next_due_date(current_quota)
-        # Asignar el monto si no se especifica
-        if not self.amount:
-            self.amount = current_quota.amount
+        # Obtener la configuración de cuota activa actual
+        current_quota = QuotaConfig.get_active_config()
+        if current_quota:
+            # Completar la fecha de vencimiento si no se proporciona
+            if not self.due_date:
+                self.due_date = self._get_next_due_date(current_quota)
+            # Asignar el monto si no se especifica
+            if not self.amount:
+                self.amount = current_quota.amount
         # Si se marca como pago completo, forzamos amount_paid al monto total
         if self.is_fully_paid:
             self.amount_paid = self.amount

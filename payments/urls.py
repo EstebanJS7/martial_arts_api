@@ -5,6 +5,7 @@ from .views import (
     PaymentDetailView,
     PaymentCreateView,
     QuotaConfigView,
+    QuotaConfigListView,
     check_user_due_status_view,
     UserPaymentListView,
     PaymentTransactionListView
@@ -19,8 +20,9 @@ urlpatterns = [
     path('detail/<int:pk>/', PaymentDetailView.as_view(), name='payment-detail'),
     path('create/', PaymentCreateView.as_view(), name='payment-create'),
     
-    # Endpoint para configurar o consultar la cuota
-    path('quota-config/', QuotaConfigView.as_view(), name='quota-config'),
+    # Endpoints para configurar o consultar la cuota
+    path('quota-config/', QuotaConfigListView.as_view(), name='quota-config-list'),
+    path('quota-config/<int:pk>/', QuotaConfigView.as_view(), name='quota-config-detail'),
     
     # Endpoint para verificar el estado de pagos (vencidos o próximos)
     path('check-due-status/<int:user_id>/', check_user_due_status_view, name='check-due-status'),

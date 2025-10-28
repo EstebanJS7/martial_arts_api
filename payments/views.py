@@ -81,7 +81,16 @@ class PaymentCreateView(generics.CreateAPIView):
         create_next_month_payment(payment.user)
 
 
-class QuotaConfigView(generics.ListCreateAPIView):
+class QuotaConfigView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Permite listar, crear, actualizar y eliminar configuraciones de cuota.
+    Acceso restringido a administradores.
+    """
+    queryset = QuotaConfig.objects.all()
+    serializer_class = QuotaConfigSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+class QuotaConfigListView(generics.ListCreateAPIView):
     """
     Permite listar y crear configuraciones de cuota.
     Acceso restringido a administradores.
