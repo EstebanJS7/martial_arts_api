@@ -10,12 +10,16 @@ from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Class, UserClassReservation
+from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate
+from .services import ClassDashboardService
 from .serializers import (
     ClassSerializer, 
     UserClassReservationSerializer, 
     MultiClassCreateSerializer,
-    MultiClassUpdateSerializer
+    MultiClassUpdateSerializer,
+    ClassAttendanceSerializer,
+    ClassAttendanceCreateSerializer,
+    ClassTemplateSerializer,
 )
 from users.permissions import IsAdminUser, IsInstructorUser
 from rest_framework.permissions import IsAuthenticated
@@ -275,3 +279,337 @@ class AllClassesView(APIView):
         serializer = ClassSerializer(all_classes, many=True, context={'request': request})
         
         return Response(serializer.data)
+
+
+# --- Vistas para Asistencia de Clases ---
+
+class ClassAttendanceListView(APIView):
+    """
+    Vista para listar asistencias de una clase específica.
+    Solo admin/instructor pueden ver las asistencias.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request, class_id):
+        try:
+            class_obj = Class.objects.get(pk=class_id)
+        except Class.DoesNotExist:
+            return Response(
+                {"detail": "Clase no encontrada"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Obtener todas las reservas de la clase
+        reservations = UserClassReservation.objects.filter(
+            class_reserved=class_obj,
+            is_cancelled=False
+        ).select_related('user')
+        
+        # Obtener asistencias existentes
+        attendances = ClassAttendance.objects.filter(
+            class_reserved=class_obj
+        ).select_related('user', 'marked_by')
+        
+        attendance_dict = {att.user_id: att for att in attendances}
+        
+        # Crear lista de asistencias (incluyendo reservas sin registro de asistencia)
+        result = []
+        for reservation in reservations:
+            if reservation.user_id in attendance_dict:
+                att = attendance_dict[reservation.user_id]
+                serializer = ClassAttendanceSerializer(att)
+                result.append(serializer.data)
+            else:
+                # Crear entrada sin asistencia marcada
+                result.append({
+                    'id': None,
+                    'class_reserved': class_obj.id,
+                    'user': reservation.user.id,
+                    'user_email': reservation.user.email,
+                    'user_full_name': f"{reservation.user.first_name or ''} {reservation.user.last_name or ''}".strip() or reservation.user.email,
+                    'class_name': class_obj.name,
+                    'attended': False,
+                    'check_in_time': None,
+                    'check_out_time': None,
+                    'notes': '',
+                    'marked_by': None,
+                    'marked_by_email': None,
+                    'created_at': reservation.created_at.isoformat(),
+                    'updated_at': reservation.created_at.isoformat(),
+                })
+        
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ClassAttendanceCreateUpdateView(APIView):
+    """
+    Vista para crear o actualizar asistencia de un estudiante en una clase.
+    Solo admin/instructor pueden marcar asistencia.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def post(self, request, class_id):
+        try:
+            class_obj = Class.objects.get(pk=class_id)
+        except Class.DoesNotExist:
+            return Response(
+                {"detail": "Clase no encontrada"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = ClassAttendanceCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        user = serializer.validated_data['user']
+        attended = serializer.validated_data.get('attended', True)
+        
+        # Verificar que el usuario tenga reserva para esta clase
+        reservation = UserClassReservation.objects.filter(
+            class_reserved=class_obj,
+            user=user,
+            is_cancelled=False
+        ).first()
+        
+        if not reservation:
+            return Response(
+                {"detail": "El usuario no tiene reserva para esta clase"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Crear o actualizar asistencia
+        attendance, created = ClassAttendance.objects.update_or_create(
+            class_reserved=class_obj,
+            user=user,
+            defaults={
+                'attended': attended,
+                'notes': serializer.validated_data.get('notes', ''),
+                'check_in_time': serializer.validated_data.get('check_in_time', timezone.now() if attended else None),
+                'check_out_time': serializer.validated_data.get('check_out_time'),
+                'marked_by': request.user,
+            }
+        )
+        
+        result_serializer = ClassAttendanceSerializer(attendance)
+        return Response(result_serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class ClassAttendanceBulkUpdateView(APIView):
+    """
+    Vista para actualizar asistencia de múltiples estudiantes a la vez.
+    Solo admin/instructor pueden usar este endpoint.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def post(self, request, class_id):
+        try:
+            class_obj = Class.objects.get(pk=class_id)
+        except Class.DoesNotExist:
+            return Response(
+                {"detail": "Clase no encontrada"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        attendances_data = request.data.get('attendances', [])
+        if not isinstance(attendances_data, list):
+            return Response(
+                {"detail": "Se espera una lista de asistencias"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        results = []
+        for attendance_data in attendances_data:
+            serializer = ClassAttendanceCreateSerializer(data=attendance_data)
+            if not serializer.is_valid():
+                results.append({
+                    'user': attendance_data.get('user'),
+                    'error': serializer.errors
+                })
+                continue
+            
+            user = serializer.validated_data['user']
+            attended = serializer.validated_data.get('attended', True)
+            
+            attendance, _ = ClassAttendance.objects.update_or_create(
+                class_reserved=class_obj,
+                user=user,
+                defaults={
+                    'attended': attended,
+                    'notes': serializer.validated_data.get('notes', ''),
+                    'check_in_time': serializer.validated_data.get('check_in_time', timezone.now() if attended else None),
+                    'check_out_time': serializer.validated_data.get('check_out_time'),
+                    'marked_by': request.user,
+                }
+            )
+            
+            result_serializer = ClassAttendanceSerializer(attendance)
+            results.append(result_serializer.data)
+        
+        return Response({'updated': len(results), 'results': results}, status=status.HTTP_200_OK)
+
+
+# --- Vistas para Plantillas de Clases ---
+
+class ClassTemplateListView(generics.ListCreateAPIView):
+    """
+    Vista para listar y crear plantillas de clases.
+    Solo admin/instructor pueden gestionar plantillas.
+    """
+    queryset = ClassTemplate.objects.filter(is_active=True)
+    serializer_class = ClassTemplateSerializer
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def perform_create(self, serializer):
+        serializer.save()
+
+
+class ClassTemplateDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Vista para obtener, actualizar o eliminar una plantilla específica.
+    Solo admin/instructor.
+    """
+    queryset = ClassTemplate.objects.all()
+    serializer_class = ClassTemplateSerializer
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def perform_destroy(self, instance):
+        # Soft delete: solo desactivar en lugar de eliminar
+        instance.is_active = False
+        instance.save()
+        logger.info(f"{self.request.user.email} desactivó la plantilla '{instance.name}'.")
+
+
+# --- Vistas para Dashboard de Estadísticas de Clases ---
+
+class ClassDashboardView(APIView):
+    """
+    Vista para obtener datos del dashboard de clases.
+    Solo admin/instructor pueden acceder.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        period_months = int(request.query_params.get('period_months', 1))
+        instructor_id = request.query_params.get('instructor_id')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # Convertir instructor_id a int si existe
+        if instructor_id:
+            try:
+                instructor_id = int(instructor_id)
+            except (ValueError, TypeError):
+                instructor_id = None
+        
+        # Convertir fechas si existen
+        from datetime import datetime
+        if start_date:
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                start_date = None
+        
+        if end_date:
+            try:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                end_date = None
+        
+        data = ClassDashboardService.get_dashboard_overview(
+            period_months=period_months,
+            instructor_id=instructor_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class ClassStatsView(APIView):
+    """
+    Vista para obtener estadísticas mensuales de clases.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        year = int(request.query_params.get('year', timezone.now().year))
+        month = int(request.query_params.get('month', timezone.now().month))
+        instructor_id = request.query_params.get('instructor_id')
+        
+        if instructor_id:
+            try:
+                instructor_id = int(instructor_id)
+            except (ValueError, TypeError):
+                instructor_id = None
+        
+        data = ClassDashboardService.get_monthly_stats(
+            year=year,
+            month=month,
+            instructor_id=instructor_id
+        )
+        
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class ClassTrendsView(APIView):
+    """
+    Vista para obtener tendencias de clases mes a mes.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        period_months = int(request.query_params.get('period_months', 6))
+        instructor_id = request.query_params.get('instructor_id')
+        
+        if instructor_id:
+            try:
+                instructor_id = int(instructor_id)
+            except (ValueError, TypeError):
+                instructor_id = None
+        
+        data = ClassDashboardService.get_class_trends(
+            period_months=period_months,
+            instructor_id=instructor_id
+        )
+        
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class TopInstructorsView(APIView):
+    """
+    Vista para obtener los top instructores por estadísticas.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        period_months = int(request.query_params.get('period_months', 1))
+        limit = int(request.query_params.get('limit', 10))
+        
+        data = ClassDashboardService.get_top_instructors(
+            period_months=period_months,
+            limit=limit
+        )
+        
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class PopularClassesView(APIView):
+    """
+    Vista para obtener las clases más populares.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        period_months = int(request.query_params.get('period_months', 1))
+        limit = int(request.query_params.get('limit', 10))
+        
+        data = ClassDashboardService.get_popular_classes(
+            period_months=period_months,
+            limit=limit
+        )
+        
+        return Response(data, status=status.HTTP_200_OK)

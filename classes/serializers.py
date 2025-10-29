@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Class, UserClassReservation
+from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate
 
 User = get_user_model()
 
@@ -148,3 +148,87 @@ class MultiClassUpdateSerializer(serializers.Serializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+
+
+class ClassAttendanceSerializer(serializers.ModelSerializer):
+    """Serializer para el registro de asistencia de clases."""
+    user_email = serializers.SerializerMethodField()
+    user_full_name = serializers.SerializerMethodField()
+    class_name = serializers.SerializerMethodField()
+    marked_by_email = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ClassAttendance
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at', 'marked_by')
+    
+    def get_user_email(self, obj):
+        return obj.user.email if obj.user else None
+    
+    def get_user_full_name(self, obj):
+        if obj.user:
+            first_name = obj.user.first_name or ""
+            last_name = obj.user.last_name or ""
+            if first_name or last_name:
+                return f"{first_name} {last_name}".strip()
+            return obj.user.email
+        return None
+    
+    def get_class_name(self, obj):
+        return obj.class_reserved.name if obj.class_reserved else None
+    
+    def get_marked_by_email(self, obj):
+        return obj.marked_by.email if obj.marked_by else None
+
+
+class ClassAttendanceCreateSerializer(serializers.Serializer):
+    """Serializer para crear/actualizar asistencia."""
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    attended = serializers.BooleanField()
+    notes = serializers.CharField(required=False, allow_blank=True)
+    check_in_time = serializers.DateTimeField(required=False, allow_null=True)
+    check_out_time = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class ClassTemplateSerializer(serializers.ModelSerializer):
+    """Serializer para plantillas de clases."""
+    instructor_name = serializers.SerializerMethodField()
+    instructor_email = serializers.SerializerMethodField()
+    class_type_display = serializers.CharField(source='get_class_type_display', read_only=True)
+    difficulty_level_display = serializers.CharField(source='get_difficulty_level_display', read_only=True)
+    
+    class Meta:
+        model = ClassTemplate
+        fields = '__all__'
+    
+    def get_instructor_name(self, obj):
+        if obj.instructor:
+            first_name = obj.instructor.first_name or ""
+            last_name = obj.instructor.last_name or ""
+            if first_name or last_name:
+                return f"{first_name} {last_name}".strip()
+            return obj.instructor.email
+        return None
+    
+    def get_instructor_email(self, obj):
+        return obj.instructor.email if obj.instructor else None
+
+
+class ClassTemplateCreateSerializer(serializers.ModelSerializer):
+    """Serializer para crear clases desde plantillas."""
+    template_id = serializers.IntegerField(required=False)
+    start_date = serializers.DateTimeField()
+    end_date = serializers.DateTimeField()
+    frequency = serializers.ChoiceField(
+        choices=[
+            ('daily', 'Diario'),
+            ('weekly', 'Semanal'),
+            ('monthly', 'Mensual'),
+        ],
+        default='weekly'
+    )
+    days_of_week = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=6),
+        required=False,
+        help_text="Días de la semana (0=Lunes, 6=Domingo)"
+    )
