@@ -85,3 +85,61 @@ class PaymentTransaction(models.Model):
 
     def __str__(self):
         return f"Transacción de {self.amount} en {self.transaction_date}"
+
+
+class PaymentStats(models.Model):
+    """
+    Estadísticas de pagos para el dashboard y reportes.
+    """
+    date = models.DateField(unique=True)
+    total_collected = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    pending_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    overdue_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    payment_count = models.IntegerField(default=0)
+    collection_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date']
+        verbose_name = "Estadística de Pago"
+        verbose_name_plural = "Estadísticas de Pagos"
+
+    @classmethod
+    def get_monthly_stats(cls, year, month):
+        """Obtiene estadísticas para un mes específico"""
+        try:
+            return cls.objects.get(date__year=year, date__month=month)
+        except cls.DoesNotExist:
+            return None
+
+    @classmethod
+    def get_dashboard_data(cls):
+        """Obtiene datos para el dashboard principal"""
+        from datetime import date, timedelta
+        
+        today = date.today()
+        last_month = today.replace(day=1) - timedelta(days=1)
+        
+        # Estadísticas del mes actual
+        current_month = cls.get_monthly_stats(today.year, today.month)
+        
+        # Estadísticas del mes anterior
+        previous_month = cls.get_monthly_stats(last_month.year, last_month.month)
+        
+        # Tendencias de los últimos 6 meses
+        six_months_ago = today.replace(day=1) - timedelta(days=150)
+        trends = cls.objects.filter(
+            date__gte=six_months_ago,
+            date__lte=today
+        ).order_by('date')
+        
+        return {
+            'current_month': current_month,
+            'previous_month': previous_month,
+            'trends': trends,
+            'period': f"{six_months_ago.strftime('%Y-%m')} a {today.strftime('%Y-%m')}"
+        }
+
+    def __str__(self):
+        return f"Estadísticas de {self.date.strftime('%Y-%m')}"

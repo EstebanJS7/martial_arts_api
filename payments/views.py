@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from django.http import JsonResponse
 from rest_framework import generics, permissions, status
@@ -13,9 +13,14 @@ from .serializers import (
     PaymentSerializer, 
     PaymentCreateSerializer,
     QuotaConfigSerializer, 
-    PaymentApplySerializer
+    PaymentApplySerializer,
+    PaymentDashboardSerializer,
+    PaymentTrendSerializer,
+    TopPayerSerializer,
+    PaymentMethodDistributionSerializer,
+    PaymentStatsSerializer
 )
-from .services import PaymentService
+from .services import PaymentService, PaymentDashboardService
 from users.models import CustomUser
 from .utils import create_next_month_payment
 from .filters import PaymentFilter
@@ -214,3 +219,166 @@ class PaymentTransactionListView(ListAPIView):
         if user == payment.user or user.is_staff or (hasattr(user, 'userprofile') and user.userprofile.role == 'instructor'):
             return PaymentTransaction.objects.filter(payment=payment).order_by('-transaction_date')
         return PaymentTransaction.objects.none()
+
+
+# -------------------------------
+# Endpoints para Dashboard de Pagos
+# -------------------------------
+
+class PaymentDashboardView(APIView):
+    """
+    Vista para obtener datos del dashboard de pagos.
+    Acceso solo para administradores e instructores.
+    """
+    permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
+
+    def has_permission(self, request, view):
+        # Solo admin o instructor pueden acceder al dashboard
+        return request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor')
+
+    def get(self, request):
+        try:
+            # Obtener parámetros de filtro desde query params
+            period_months = request.query_params.get('period', 6)
+            try:
+                period_months = int(period_months)
+            except ValueError:
+                period_months = 6
+            
+            user_email = request.query_params.get('user_email', None)
+            start_date = request.query_params.get('start_date', None)
+            end_date = request.query_params.get('end_date', None)
+            payment_method = request.query_params.get('payment_method', None)
+            
+            # Convertir fechas si se proporcionan
+            if start_date:
+                try:
+                    start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+                except ValueError:
+                    start_date = None
+            
+            if end_date:
+                try:
+                    end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+                except ValueError:
+                    end_date = None
+            
+            # Obtener datos del dashboard con filtros
+            dashboard_data = PaymentDashboardService.get_dashboard_overview(
+                period_months=period_months,
+                user_email=user_email,
+                start_date=start_date,
+                end_date=end_date,
+                payment_method=payment_method
+            )
+            
+            # Obtener tendencias con filtros
+            trends = PaymentDashboardService.get_payment_trends(
+                period_months=period_months,
+                user_email=user_email,
+                payment_method=payment_method
+            )
+            
+            # Obtener top pagadores con filtros
+            top_payers = PaymentDashboardService.get_top_payers(
+                limit=10,
+                user_email=user_email,
+                payment_method=payment_method
+            )
+            
+            # Obtener distribución por métodos de pago (sin filtros de método aquí)
+            payment_methods = PaymentDashboardService.get_payment_methods_distribution()
+            
+            response_data = {
+                'overview': dashboard_data,
+                'trends': trends,
+                'top_payers': top_payers,
+                'payment_methods': payment_methods
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Error al obtener datos del dashboard: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PaymentStatsView(APIView):
+    """
+    Vista para obtener estadísticas mensuales de pagos.
+    Acceso solo para administradores e instructores.
+    """
+    permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
+
+    def has_permission(self, request, view):
+        return request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor')
+
+    def get(self, request):
+        try:
+            year = request.query_params.get('year')
+            month = request.query_params.get('month')
+            
+            if not year or not month:
+                return Response(
+                    {"detail": "Los parámetros 'year' y 'month' son requeridos"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                year = int(year)
+                month = int(month)
+            except ValueError:
+                return Response(
+                    {"detail": "Los parámetros 'year' y 'month' deben ser números válidos"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Obtener estadísticas del mes
+            stats = PaymentDashboardService.get_monthly_stats(year, month)
+            
+            if not stats:
+                return Response(
+                    {"detail": "No se encontraron estadísticas para el período especificado"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            return Response(stats, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Error al obtener estadísticas: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PaymentTrendsView(APIView):
+    """
+    Vista para obtener tendencias de pagos.
+    Acceso solo para administradores e instructores.
+    """
+    permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
+
+    def has_permission(self, request, view):
+        return request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor')
+
+    def get(self, request):
+        try:
+            period = request.query_params.get('period', 6)
+            
+            try:
+                period = int(period)
+            except ValueError:
+                period = 6
+            
+            # Obtener tendencias
+            trends = PaymentDashboardService.get_payment_trends(period)
+            
+            return Response(trends, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Error al obtener tendencias: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

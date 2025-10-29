@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Payment, QuotaConfig, PaymentTransaction
+from .models import Payment, QuotaConfig, PaymentTransaction, PaymentStats
 
 class PaymentSerializer(serializers.ModelSerializer):
     payment_method = serializers.CharField(source='transactions.first.payment_method', read_only=True)
@@ -62,3 +62,45 @@ class PaymentApplySerializer(serializers.Serializer):
         if value <= 0:
             raise serializers.ValidationError("El monto del pago debe ser un valor positivo.")
         return value
+
+
+class PaymentStatsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaymentStats
+        fields = '__all__'
+
+
+class PaymentDashboardSerializer(serializers.Serializer):
+    """Serializer para datos del dashboard de pagos"""
+    total_collected = serializers.DecimalField(max_digits=12, decimal_places=2)
+    pending_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    overdue_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    payment_count = serializers.IntegerField()
+    collection_rate = serializers.DecimalField(max_digits=5, decimal_places=2)
+    period = serializers.CharField()
+
+
+class PaymentTrendSerializer(serializers.Serializer):
+    """Serializer para tendencias de pagos"""
+    month = serializers.CharField()
+    total_collected = serializers.DecimalField(max_digits=12, decimal_places=2)
+    payment_count = serializers.IntegerField()
+
+
+class TopPayerSerializer(serializers.Serializer):
+    """Serializer para top pagadores"""
+    user__email = serializers.EmailField()
+    user__first_name = serializers.CharField()
+    user__last_name = serializers.CharField()
+    total_paid = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_expected = serializers.DecimalField(max_digits=12, decimal_places=2)
+    payment_count = serializers.IntegerField()
+    on_time_payments = serializers.IntegerField()
+    score = serializers.DecimalField(max_digits=5, decimal_places=2)
+
+
+class PaymentMethodDistributionSerializer(serializers.Serializer):
+    """Serializer para distribución por método de pago"""
+    payment_method = serializers.CharField()
+    count = serializers.IntegerField()
+    total_amount = serializers.DecimalField(max_digits=12, decimal_places=2)

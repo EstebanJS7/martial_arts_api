@@ -8,7 +8,10 @@ from .views import (
     QuotaConfigListView,
     check_user_due_status_view,
     UserPaymentListView,
-    PaymentTransactionListView
+    PaymentTransactionListView,
+    PaymentDashboardView,
+    PaymentStatsView,
+    PaymentTrendsView
 )
 
 urlpatterns = [
@@ -32,4 +35,9 @@ urlpatterns = [
     
     # Endpoint para obtener las transacciones de un pago específico
     path('<int:payment_id>/transactions/', PaymentTransactionListView.as_view(), name='payment-transactions'),
+    
+    # Endpoints para Dashboard de Pagos
+    path('dashboard/', PaymentDashboardView.as_view(), name='payment-dashboard'),
+    path('stats/monthly/', PaymentStatsView.as_view(), name='payment-stats-monthly'),
+    path('stats/trends/', PaymentTrendsView.as_view(), name='payment-trends'),
 ]
