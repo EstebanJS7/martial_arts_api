@@ -6,6 +6,21 @@ class Class(models.Model):
     """
     Modelo para representar una clase (sesión) de artes marciales.
     """
+    CLASS_TYPE_CHOICES = [
+        ('regular', 'Regular'),
+        ('intensive', 'Intensiva'),
+        ('private', 'Privada'),
+        ('seminar', 'Seminario'),
+        ('exam', 'Examen'),
+    ]
+
+    DIFFICULTY_LEVEL_CHOICES = [
+        ('kyu_a', 'Kyu A'),
+        ('kyu_b', 'Kyu B'),
+        ('dan', 'Dan'),
+        ('all', 'Todos'),
+    ]
+
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     instructor = models.ForeignKey(
@@ -20,6 +35,66 @@ class Class(models.Model):
     duration = models.DurationField(default=timedelta(hours=1))
     # Campo para almacenar el número de reservas actuales y evitar consultas COUNT cada vez
     reservation_count = models.IntegerField(default=0)
+    
+    # Campos adicionales
+    class_type = models.CharField(
+        max_length=50, 
+        choices=CLASS_TYPE_CHOICES, 
+        default='regular',
+        help_text='Tipo de clase'
+    )
+    difficulty_level = models.CharField(
+        max_length=20, 
+        choices=DIFFICULTY_LEVEL_CHOICES, 
+        default='all',
+        help_text='Nivel de dificultad'
+    )
+    location = models.CharField(
+        max_length=200, 
+        blank=True,
+        help_text='Ubicación de la clase (sala, dojo, etc.)'
+    )
+    equipment_needed = models.TextField(
+        blank=True,
+        help_text='Equipamiento requerido para la clase'
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text='Notas adicionales sobre la clase'
+    )
+    
+    # Campos de cancelación
+    is_cancelled = models.BooleanField(
+        default=False,
+        help_text='Indica si la clase ha sido cancelada'
+    )
+    cancellation_reason = models.TextField(
+        blank=True,
+        help_text='Razón de la cancelación'
+    )
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cancelled_classes',
+        help_text='Usuario que canceló la clase'
+    )
+    cancelled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Fecha y hora de cancelación'
+    )
+    
+    # Campos de estadísticas
+    attendance_count = models.IntegerField(
+        default=0,
+        help_text='Número de estudiantes que asistieron'
+    )
+    no_show_count = models.IntegerField(
+        default=0,
+        help_text='Número de estudiantes que no asistieron (no shows)'
+    )
 
     class Meta: 
         verbose_name = "Clase"

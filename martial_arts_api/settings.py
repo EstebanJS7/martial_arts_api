@@ -36,6 +36,9 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_yasg',
     'corsheaders',
+    # Tiempo real
+    'channels',
+    'notifications',
 ]
 
 MIDDLEWARE = [
@@ -68,6 +71,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'martial_arts_api.wsgi.application'
+ASGI_APPLICATION = 'martial_arts_api.asgi.application'
 
 DATABASES = {
     'default': {
@@ -219,3 +223,25 @@ DEFAULT_FROM_EMAIL = 'Martial Arts <tu_correo@gmail.com>'
 # Configuración de archivos media
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Channels - Configuración de capas de canal (Redis por defecto)
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/1')
+
+# Para desarrollo, usar InMemoryChannelLayer si Redis no está disponible
+# Para producción, usar RedisChannelLayer
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [('localhost', 6379)],
+        },
+    }
+}
+
+# Fallback a InMemoryChannelLayer si Redis no está disponible (solo para desarrollo)
+# Descomentar si Redis no está disponible:
+# CHANNEL_LAYERS = {
+#     'default': {
+#         'BACKEND': 'channels.layers.InMemoryChannelLayer'
+#     }
+# }

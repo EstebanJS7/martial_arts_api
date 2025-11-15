@@ -14,11 +14,20 @@ class ClassSerializer(serializers.ModelSerializer):
     is_reservable = serializers.SerializerMethodField()
     formatted_date = serializers.SerializerMethodField()
     formatted_duration = serializers.SerializerMethodField()
+    class_type_display = serializers.CharField(source='get_class_type_display', read_only=True)
+    difficulty_level_display = serializers.CharField(source='get_difficulty_level_display', read_only=True)
+    cancelled_by_email = serializers.SerializerMethodField()
+    cancelled_by_name = serializers.SerializerMethodField()
     
     class Meta:
         model = Class
         fields = '__all__'
-        read_only_fields = ('reservation_count',)
+        read_only_fields = (
+            'reservation_count', 
+            'attendance_count', 
+            'no_show_count',
+            'cancelled_at',
+        )
     
     def get_instructor_name(self, obj):
         if obj.instructor:
@@ -49,10 +58,15 @@ class ClassSerializer(serializers.ModelSerializer):
     def get_is_reservable(self, obj):
         """
         Una clase es reservable si:
-        1. Es futura (date > now)
-        2. Tiene cupos disponibles
-        3. El usuario no tiene ya una reserva
+        1. No está cancelada
+        2. Es futura (date > now)
+        3. Tiene cupos disponibles
+        4. El usuario no tiene ya una reserva
         """
+        # Verificar que no esté cancelada
+        if obj.is_cancelled:
+            return False
+        
         now = timezone.now()
         
         # Verificar que sea futura
@@ -89,6 +103,18 @@ class ClassSerializer(serializers.ModelSerializer):
             else:
                 return f"{minutes}min"
         return "1h"  # Default
+    
+    def get_cancelled_by_email(self, obj):
+        return obj.cancelled_by.email if obj.cancelled_by else None
+    
+    def get_cancelled_by_name(self, obj):
+        if obj.cancelled_by:
+            first_name = obj.cancelled_by.first_name or ""
+            last_name = obj.cancelled_by.last_name or ""
+            if first_name or last_name:
+                return f"{first_name} {last_name}".strip()
+            return obj.cancelled_by.email
+        return None
     
     def create(self, validated_data):
         # Asegurar que las fechas tengan timezone si no la tienen
@@ -142,6 +168,13 @@ class MultiClassUpdateSerializer(serializers.Serializer):
         queryset=User.objects.all(),
         required=False
     )
+    class_type = serializers.CharField(required=False)
+    difficulty_level = serializers.CharField(required=False)
+    location = serializers.CharField(required=False, allow_blank=True)
+    equipment_needed = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    is_cancelled = serializers.BooleanField(required=False)
+    cancellation_reason = serializers.CharField(required=False, allow_blank=True)
 
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():

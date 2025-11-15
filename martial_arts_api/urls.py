@@ -51,12 +51,15 @@ urlpatterns = [
     path('api/resources/', include('resources.urls')),
     path('api/gallery/', include('gallery.urls')),
     path('api/performance/', include('performance.urls')),
+    path('api/', include('notifications.urls')),
     path('api/dashboard/', DashboardView.as_view(), name='dashboard'),
     path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
 
-# Configuración para servir archivos media en desarrollo
+# Configuración para servir archivos estáticos y media en desarrollo
 if settings.DEBUG:
+    from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+    urlpatterns += staticfiles_urlpatterns()
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
