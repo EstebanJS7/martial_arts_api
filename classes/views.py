@@ -12,6 +12,7 @@ from datetime import timedelta
 
 from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate, ClassWaitlist
 from .services import ClassDashboardService
+from .qr_utils import generate_qr_code_image, validate_qr_token_and_checkin
 from .serializers import (
     ClassSerializer, 
     UserClassReservationSerializer, 
@@ -44,6 +45,24 @@ class ClassCreateView(generics.CreateAPIView):
     queryset = Class.objects.all()
     serializer_class = ClassSerializer
     permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def perform_create(self, serializer):
+        # Obtener datos validados
+        validated_data = serializer.validated_data
+        
+        # Realizar validaciones avanzadas
+        validation_result = ClassValidator.validate_class(validated_data)
+        
+        if not validation_result['valid']:
+            error_message = '; '.join(validation_result['errors'])
+            raise ValidationError(error_message)
+        
+        # Si hay advertencias, registrarlas pero permitir la creación
+        if validation_result.get('warnings'):
+            logger.warning(f"Advertencias al crear clase: {'; '.join(validation_result['warnings'])}")
+        
+        # Crear la clase
+        serializer.save()
 
 class MultiClassCreateView(APIView):
     """
@@ -56,6 +75,25 @@ class MultiClassCreateView(APIView):
     def post(self, request):
         serializer = MultiClassCreateSerializer(data=request.data)
         if serializer.is_valid():
+            # Validar cada clase antes de crearlas
+            classes_data = serializer.validated_data.get('classes', [])
+            validation_errors = []
+            
+            for idx, class_data in enumerate(classes_data):
+                validation_result = ClassValidator.validate_class(class_data)
+                if not validation_result['valid']:
+                    validation_errors.append({
+                        'index': idx,
+                        'class_name': class_data.get('name', 'Sin nombre'),
+                        'errors': validation_result['errors']
+                    })
+            
+            if validation_errors:
+                return Response({
+                    'detail': 'Errores de validación en algunas clases',
+                    'validation_errors': validation_errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             classes = serializer.save()
             logger.info(f"{request.user.email} creó {len(classes)} clases de forma masiva.")
             return Response(ClassSerializer(classes, many=True).data, status=status.HTTP_201_CREATED)
@@ -93,6 +131,35 @@ class ClassDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         # Optimización: Usar select_related para cargar el instructor en una sola consulta
         return Class.objects.select_related('instructor')
+    
+    def perform_update(self, serializer):
+        # Obtener datos validados
+        validated_data = serializer.validated_data
+        instance = self.get_object()
+        
+        # Combinar datos actuales con los nuevos
+        class_data = {
+            'instructor': validated_data.get('instructor', instance.instructor_id),
+            'date': validated_data.get('date', instance.date),
+            'duration': validated_data.get('duration', instance.duration),
+            'location': validated_data.get('location', instance.location),
+            'max_students': validated_data.get('max_students', instance.max_students),
+            'equipment_needed': validated_data.get('equipment_needed', instance.equipment_needed),
+        }
+        
+        # Realizar validaciones avanzadas
+        validation_result = ClassValidator.validate_class(class_data, exclude_class_id=instance.id)
+        
+        if not validation_result['valid']:
+            error_message = '; '.join(validation_result['errors'])
+            raise ValidationError(error_message)
+        
+        # Si hay advertencias, registrarlas pero permitir la actualización
+        if validation_result.get('warnings'):
+            logger.warning(f"Advertencias al actualizar clase {instance.id}: {'; '.join(validation_result['warnings'])}")
+        
+        # Actualizar la clase
+        serializer.save()
 
 class MultiClassUpdateView(APIView):
     """
@@ -154,6 +221,16 @@ class UserClassReservationCreateView(generics.CreateAPIView):
             class_reserved=class_obj
         ).exists():
             raise ValidationError("Ya tienes una reserva para esta clase.")
+        
+        # Validar prerequisitos del estudiante
+        validation_result = ClassValidator.validate_student_prerequisites(
+            self.request.user.id,
+            class_obj.difficulty_level,
+            class_obj.class_type
+        )
+        
+        if not validation_result['valid']:
+            raise ValidationError(validation_result['message'])
             
         # Incrementar el contador de reservas y guardar
         class_obj.reservation_count = F('reservation_count') + 1
@@ -857,3 +934,100 @@ class ClassWaitlistConvertView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+
+# --- Vistas para Códigos QR de Check-in ---
+
+class ClassQRCodeView(APIView):
+    """
+    Vista para generar y obtener el código QR de una clase.
+    Solo admin/instructor pueden ver el QR.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request, class_id):
+        try:
+            class_obj = Class.objects.get(pk=class_id)
+        except Class.DoesNotExist:
+            return Response(
+                {"detail": "Clase no encontrada"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Generar token si no existe
+        qr_token = class_obj.generate_qr_token()
+        
+        # Generar datos del QR (URL del frontend con el token)
+        from django.conf import settings
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        qr_data = f"{frontend_url}/checkin?token={qr_token}"
+        
+        # Generar imagen del QR
+        qr_image = generate_qr_code_image(qr_data)
+        
+        # Devolver imagen como respuesta
+        from django.http import HttpResponse
+        response = HttpResponse(qr_image, content_type='image/png')
+        response['Content-Disposition'] = f'inline; filename="qr_class_{class_obj.id}.png"'
+        return response
+
+
+class ClassQRDataView(APIView):
+    """
+    Vista para obtener los datos del código QR (token y URL) de una clase.
+    Solo admin/instructor pueden ver los datos del QR.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request, class_id):
+        try:
+            class_obj = Class.objects.get(pk=class_id)
+        except Class.DoesNotExist:
+            return Response(
+                {"detail": "Clase no encontrada"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Generar token si no existe
+        qr_token = class_obj.generate_qr_token()
+        
+        # Generar URL del QR
+        from django.conf import settings
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        qr_url = f"{frontend_url}/checkin?token={qr_token}"
+        
+        return Response({
+            'token': qr_token,
+            'qr_url': qr_url,
+            'class_id': class_obj.id,
+            'class_name': class_obj.name,
+            'class_date': class_obj.date.isoformat(),
+        }, status=status.HTTP_200_OK)
+
+
+class QRCheckInView(APIView):
+    """
+    Vista para validar un código QR y realizar check-in automático.
+    Cualquier usuario autenticado puede hacer check-in con QR.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        token = request.data.get('token')
+        
+        if not token:
+            return Response(
+                {"detail": "Token de QR requerido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar token y hacer check-in
+        result = validate_qr_token_and_checkin(token, request.user)
+        
+        if not result['success']:
+            return Response(
+                {"detail": result['error']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(result, status=status.HTTP_200_OK)

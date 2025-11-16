@@ -46,3 +46,4 @@ class UserNotificationPreferenceView(generics.RetrieveUpdateAPIView):
 
 
 
+

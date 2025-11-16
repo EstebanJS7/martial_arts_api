@@ -1,2 +1,3 @@
 # Migrations for notifications app
 
+

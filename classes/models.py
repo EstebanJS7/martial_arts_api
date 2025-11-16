@@ -95,6 +95,15 @@ class Class(models.Model):
         default=0,
         help_text='Número de estudiantes que no asistieron (no shows)'
     )
+    
+    # Campo para código QR único
+    qr_code_token = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text='Token único para el código QR de check-in'
+    )
 
     class Meta: 
         verbose_name = "Clase"
@@ -102,6 +111,14 @@ class Class(models.Model):
 
     def __str__(self):
         return self.name
+    
+    def generate_qr_token(self):
+        """Genera un token único para el código QR si no existe."""
+        import secrets
+        if not self.qr_code_token:
+            self.qr_code_token = f"class_{self.id}_{secrets.token_urlsafe(32)}"
+            self.save(update_fields=['qr_code_token'])
+        return self.qr_code_token
 
 class UserClassReservation(models.Model):
     """

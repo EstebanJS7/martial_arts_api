@@ -26,6 +26,9 @@ from .views import (
     ClassWaitlistCreateView,
     ClassWaitlistDeleteView,
     ClassWaitlistConvertView,
+    ClassQRCodeView,
+    ClassQRDataView,
+    QRCheckInView,
 )
 
 urlpatterns = [
@@ -62,4 +65,9 @@ urlpatterns = [
     path('waitlist/create/', ClassWaitlistCreateView.as_view(), name='class-waitlist-create'),
     path('waitlist/<int:pk>/delete/', ClassWaitlistDeleteView.as_view(), name='class-waitlist-delete'),
     path('waitlist/<int:pk>/convert/', ClassWaitlistConvertView.as_view(), name='class-waitlist-convert'),
+    
+    # Rutas para Códigos QR de Check-in
+    path('<int:class_id>/qr-code/', ClassQRCodeView.as_view(), name='class-qr-code'),
+    path('<int:class_id>/qr-data/', ClassQRDataView.as_view(), name='class-qr-data'),
+    path('qr-checkin/', QRCheckInView.as_view(), name='qr-checkin'),
 ]

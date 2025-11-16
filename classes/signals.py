@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from notifications.services import create_and_notify
+from notifications.notification_scheduler import NotificationScheduler
 from .models import UserClassReservation, ClassAttendance, Class, ClassWaitlist
 
 
@@ -89,6 +90,8 @@ def class_pre_save(sender, instance: Class, **kwargs):
             # Si cambió de no cancelada a cancelada
             if not old_instance.is_cancelled and instance.is_cancelled:
                 instance.cancelled_at = timezone.now()
+                # Guardar la razón de cancelación para usarla en el post_save
+                instance._cancellation_reason = instance.cancellation_reason or ''
             # Si cambió de cancelada a no cancelada
             elif old_instance.is_cancelled and not instance.is_cancelled:
                 instance.cancelled_at = None
@@ -99,6 +102,7 @@ def class_pre_save(sender, instance: Class, **kwargs):
     elif instance.is_cancelled:
         # Si es nueva y está cancelada desde el inicio
         instance.cancelled_at = timezone.now()
+        instance._cancellation_reason = instance.cancellation_reason or ''
 
 
 @receiver(post_save, sender=Class)
@@ -106,6 +110,7 @@ def class_reservation_count_changed(sender, instance: Class, **kwargs):
     """
     Cuando cambia el número de reservas de una clase, verificar si hay cupos disponibles
     para notificar a las personas en la lista de espera.
+    También envía notificaciones cuando se cancela una clase.
     """
     if instance.pk:
         try:
@@ -113,6 +118,11 @@ def class_reservation_count_changed(sender, instance: Class, **kwargs):
             # Si el número de reservas disminuyó (se canceló una reserva)
             if old_instance.reservation_count > instance.reservation_count:
                 _notify_waitlist_availability(instance)
+            
+            # Si la clase fue cancelada, notificar a todos los usuarios con reserva
+            if not old_instance.is_cancelled and instance.is_cancelled:
+                cancellation_reason = getattr(instance, '_cancellation_reason', instance.cancellation_reason or '')
+                NotificationScheduler.send_class_cancellation_notifications(instance, cancellation_reason)
         except Class.DoesNotExist:
             pass
 

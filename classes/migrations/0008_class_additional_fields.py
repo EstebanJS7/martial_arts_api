@@ -122,3 +122,4 @@ class Migration(migrations.Migration):
         ),
     ]
 
+

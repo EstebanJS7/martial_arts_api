@@ -142,19 +142,48 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-# Comentado temporalmente para evitar dependencia de Redis
-# CELERY_BROKER_URL = 'redis://localhost:6379/0'
-# CELERY_ACCEPT_CONTENT = ['json']
-# CELERY_TASK_SERIALIZER = 'json'
-# CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+# Configuración de Celery
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
 
-
-# CELERY_BEAT_SCHEDULE = {
-#     'generar-cuotas-anuales-cada-enero': {
-#         'task': 'martial_arts_api.tasks.generate_annual_payments_for_all_students',
-#         'schedule': crontab(minute=0, hour=0, day_ofmonth=1, month_of_year=1),  # 1 de enero a las 00:00
-#     },
-# }
+# Configuración de Celery Beat (tareas programadas)
+CELERY_BEAT_SCHEDULE = {
+    # Generar cuotas anuales cada enero
+    'generar-cuotas-anuales-cada-enero': {
+        'task': 'martial_arts_api.tasks.generate_annual_payments_for_all_students',
+        'schedule': crontab(minute=0, hour=0, day_of_month=1, month_of_year=1),  # 1 de enero a las 00:00
+    },
+    # Generar cuotas mensuales el día 1 de cada mes
+    'generar-cuotas-mensuales': {
+        'task': 'payments.tasks.generate_monthly_payments_task',
+        'schedule': crontab(minute=0, hour=8, day_of_month=1),  # Día 1 de cada mes a las 08:00
+    },
+    # Enviar recordatorios de clases cada 15 minutos
+    'send-class-reminders': {
+        'task': 'notifications.tasks.send_class_reminders_task',
+        'schedule': crontab(minute='*/15'),  # Cada 15 minutos
+    },
+    # Notificar pagos vencidos diariamente
+    'notify-overdue-payments': {
+        'task': 'payments.tasks.notify_overdue_payments',
+        'schedule': crontab(minute=0, hour=9),  # Todos los días a las 09:00
+    },
+    # Notificar pagos próximos a vencer diariamente
+    'notify-upcoming-payments': {
+        'task': 'payments.tasks.notify_upcoming_payments',
+        'schedule': crontab(minute=0, hour=9),  # Todos los días a las 09:00
+    },
+    # Generar reporte mensual (se ejecuta diariamente, pero solo genera reporte el último día del mes)
+    'generate-monthly-report': {
+        'task': 'payments.tasks.generate_monthly_report',
+        'schedule': crontab(minute=0, hour=10, day_of_month='28,29,30,31'),  # Días 28-31 a las 10:00 (la tarea verifica si es el último día)
+    },
+}
 
 CORS_ALLOW_ALL_ORIGINS = True
 
