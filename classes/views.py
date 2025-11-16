@@ -10,7 +10,7 @@ from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate
+from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate, ClassWaitlist
 from .services import ClassDashboardService
 from .serializers import (
     ClassSerializer, 
@@ -20,6 +20,8 @@ from .serializers import (
     ClassAttendanceSerializer,
     ClassAttendanceCreateSerializer,
     ClassTemplateSerializer,
+    ClassWaitlistSerializer,
+    ClassWaitlistCreateSerializer,
 )
 from users.permissions import IsAdminUser, IsInstructorUser
 from rest_framework.permissions import IsAuthenticated
@@ -613,3 +615,245 @@ class PopularClassesView(APIView):
         )
         
         return Response(data, status=status.HTTP_200_OK)
+
+
+# --- Vistas para Lista de Espera de Clases ---
+
+class ClassWaitlistListView(APIView):
+    """
+    Lista las entradas de lista de espera.
+    - Si se proporciona class_id: lista todas las entradas de espera para esa clase
+    - Si no: lista las entradas del usuario actual
+    - Admin/Instructor puede ver todas las listas de espera
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        class_id = request.query_params.get('class_id')
+        user_id = request.query_params.get('user_id')
+        
+        # Admin/Instructor puede ver todas las listas de espera
+        if (IsAdminUser().has_permission(request, self) or 
+            IsInstructorUser().has_permission(request, self)):
+            queryset = ClassWaitlist.objects.all()
+            
+            if class_id:
+                queryset = queryset.filter(class_reserved_id=class_id)
+            if user_id:
+                queryset = queryset.filter(user_id=user_id)
+        else:
+            # Usuario normal solo ve sus propias entradas
+            queryset = ClassWaitlist.objects.filter(user=request.user)
+            if class_id:
+                queryset = queryset.filter(class_reserved_id=class_id)
+        
+        # Filtrar por estado si se proporciona
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        serializer = ClassWaitlistSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ClassWaitlistCreateView(APIView):
+    """
+    Crea una entrada en la lista de espera para una clase llena.
+    Solo se puede agregar si la clase está llena y el usuario no tiene ya una reserva o entrada en lista de espera.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        serializer = ClassWaitlistCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        class_id = serializer.validated_data['class_id']
+        
+        try:
+            class_obj = Class.objects.get(pk=class_id)
+        except Class.DoesNotExist:
+            return Response(
+                {'detail': 'La clase no existe.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Verificar que la clase no esté cancelada
+        if class_obj.is_cancelled:
+            return Response(
+                {'detail': 'No se puede agregar a la lista de espera de una clase cancelada.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verificar que la clase sea futura
+        if class_obj.date <= timezone.now():
+            return Response(
+                {'detail': 'No se puede agregar a la lista de espera de una clase pasada.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verificar que el usuario no tenga ya una reserva
+        if UserClassReservation.objects.filter(
+            user=request.user,
+            class_reserved=class_obj,
+            is_cancelled=False
+        ).exists():
+            return Response(
+                {'detail': 'Ya tienes una reserva para esta clase.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verificar que el usuario no esté ya en la lista de espera
+        existing_waitlist = ClassWaitlist.objects.filter(
+            user=request.user,
+            class_reserved=class_obj,
+            status='waiting'
+        ).first()
+        
+        if existing_waitlist:
+            return Response(
+                {'detail': 'Ya estás en la lista de espera para esta clase.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Crear la entrada en la lista de espera
+        waitlist_entry = ClassWaitlist.objects.create(
+            user=request.user,
+            class_reserved=class_obj,
+            status='waiting'
+        )
+        
+        serializer = ClassWaitlistSerializer(waitlist_entry, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ClassWaitlistDeleteView(APIView):
+    """
+    Elimina/cancela una entrada de la lista de espera.
+    El usuario solo puede cancelar sus propias entradas.
+    Admin/Instructor puede cancelar cualquier entrada.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def delete(self, request, pk):
+        try:
+            waitlist_entry = ClassWaitlist.objects.get(pk=pk)
+        except ClassWaitlist.DoesNotExist:
+            return Response(
+                {'detail': 'La entrada de lista de espera no existe.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Verificar permisos
+        if waitlist_entry.user != request.user:
+            if not (IsAdminUser().has_permission(request, self) or 
+                    IsInstructorUser().has_permission(request, self)):
+                return Response(
+                    {'detail': 'No tienes permiso para eliminar esta entrada.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Solo se puede cancelar si está en espera o notificado
+        if waitlist_entry.status not in ['waiting', 'notified']:
+            return Response(
+                {'detail': 'Solo se pueden cancelar entradas en espera o notificadas.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Actualizar el estado a cancelado en lugar de eliminar
+        waitlist_entry.status = 'cancelled'
+        waitlist_entry.save()
+        
+        # Reorganizar posiciones de las entradas restantes
+        ClassWaitlist.objects.filter(
+            class_reserved=waitlist_entry.class_reserved,
+            status='waiting',
+            position__gt=waitlist_entry.position
+        ).update(position=F('position') - 1)
+        
+        return Response(
+            {'detail': 'Entrada de lista de espera cancelada correctamente.'},
+            status=status.HTTP_200_OK
+        )
+
+
+class ClassWaitlistConvertView(APIView):
+    """
+    Convierte una entrada de lista de espera en una reserva cuando hay cupo disponible.
+    Solo se puede convertir si hay cupos disponibles y la entrada está notificada.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk):
+        try:
+            waitlist_entry = ClassWaitlist.objects.get(pk=pk)
+        except ClassWaitlist.DoesNotExist:
+            return Response(
+                {'detail': 'La entrada de lista de espera no existe.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Verificar que el usuario sea el dueño de la entrada
+        if waitlist_entry.user != request.user:
+            return Response(
+                {'detail': 'No tienes permiso para convertir esta entrada.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Verificar que la entrada esté notificada
+        if waitlist_entry.status != 'notified':
+            return Response(
+                {'detail': 'Esta entrada no ha sido notificada aún.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        class_obj = waitlist_entry.class_reserved
+        
+        # Verificar que haya cupos disponibles
+        if class_obj.reservation_count >= class_obj.max_students:
+            return Response(
+                {'detail': 'Ya no hay cupos disponibles para esta clase.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verificar que el usuario no tenga ya una reserva
+        if UserClassReservation.objects.filter(
+            user=request.user,
+            class_reserved=class_obj,
+            is_cancelled=False
+        ).exists():
+            return Response(
+                {'detail': 'Ya tienes una reserva para esta clase.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Crear la reserva
+        with transaction.atomic():
+            reservation = UserClassReservation.objects.create(
+                user=request.user,
+                class_reserved=class_obj
+            )
+            
+            # Actualizar el contador de reservas
+            class_obj.reservation_count = F('reservation_count') + 1
+            class_obj.save(update_fields=['reservation_count'])
+            class_obj.refresh_from_db()
+            
+            # Actualizar el estado de la entrada de lista de espera
+            waitlist_entry.status = 'converted'
+            waitlist_entry.converted_at = timezone.now()
+            waitlist_entry.save()
+            
+            # Reorganizar posiciones
+            ClassWaitlist.objects.filter(
+                class_reserved=class_obj,
+                status='waiting',
+                position__gt=waitlist_entry.position
+            ).update(position=F('position') - 1)
+        
+        return Response(
+            {
+                'detail': 'Reserva creada correctamente desde la lista de espera.',
+                'reservation_id': reservation.id
+            },
+            status=status.HTTP_200_OK
+        )

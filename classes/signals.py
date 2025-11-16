@@ -3,7 +3,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from notifications.services import create_and_notify
-from .models import UserClassReservation, ClassAttendance, Class
+from .models import UserClassReservation, ClassAttendance, Class, ClassWaitlist
 
 
 @receiver(post_save, sender=UserClassReservation)
@@ -45,6 +45,9 @@ def reservation_created_or_updated(sender, instance: UserClassReservation, creat
                     ntype='class',
                     payload={'class_id': cls.id, 'reservation_id': instance.id, 'user_id': instance.user_id, 'status': 'cancelled'},
                 )
+            
+            # Verificar si hay personas en la lista de espera y notificar a la primera
+            _notify_waitlist_availability(cls)
 
 
 @receiver(post_save, sender=ClassAttendance)
@@ -96,6 +99,58 @@ def class_pre_save(sender, instance: Class, **kwargs):
     elif instance.is_cancelled:
         # Si es nueva y está cancelada desde el inicio
         instance.cancelled_at = timezone.now()
+
+
+@receiver(post_save, sender=Class)
+def class_reservation_count_changed(sender, instance: Class, **kwargs):
+    """
+    Cuando cambia el número de reservas de una clase, verificar si hay cupos disponibles
+    para notificar a las personas en la lista de espera.
+    """
+    if instance.pk:
+        try:
+            old_instance = Class.objects.get(pk=instance.pk)
+            # Si el número de reservas disminuyó (se canceló una reserva)
+            if old_instance.reservation_count > instance.reservation_count:
+                _notify_waitlist_availability(instance)
+        except Class.DoesNotExist:
+            pass
+
+
+def _notify_waitlist_availability(class_obj: Class):
+    """
+    Notifica a la primera persona en la lista de espera cuando hay un cupo disponible.
+    """
+    # Verificar que haya cupos disponibles
+    if class_obj.reservation_count >= class_obj.max_students:
+        return
+    
+    # Obtener la primera entrada en la lista de espera que esté en estado 'waiting'
+    first_waitlist_entry = ClassWaitlist.objects.filter(
+        class_reserved=class_obj,
+        status='waiting'
+    ).order_by('position', 'joined_at').first()
+    
+    if first_waitlist_entry:
+        # Actualizar el estado a 'notified'
+        first_waitlist_entry.status = 'notified'
+        first_waitlist_entry.notified_at = timezone.now()
+        first_waitlist_entry.save()
+        
+        # Notificar al usuario
+        create_and_notify(
+            recipient_id=first_waitlist_entry.user_id,
+            title='¡Cupo disponible!',
+            message=f'Hay un cupo disponible para {class_obj.name} el {class_obj.date:%d/%m/%Y %H:%M}. Tienes tiempo limitado para reservar.',
+            ntype='class',
+            payload={
+                'class_id': class_obj.id,
+                'waitlist_id': first_waitlist_entry.id,
+                'position': first_waitlist_entry.position,
+                'status': 'notified',
+                'action': 'convert_to_reservation'
+            },
+        )
 
 
 

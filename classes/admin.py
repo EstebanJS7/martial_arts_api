@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate
+from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate, ClassWaitlist
 
 @admin.register(Class)
 class ClassAdmin(admin.ModelAdmin):
@@ -43,3 +43,10 @@ class ClassTemplateAdmin(admin.ModelAdmin):
     list_display = ('name', 'instructor', 'class_type', 'difficulty_level', 'is_active')
     search_fields = ('name', 'instructor__email')
     list_filter = ('class_type', 'difficulty_level', 'is_active')
+
+@admin.register(ClassWaitlist)
+class ClassWaitlistAdmin(admin.ModelAdmin):
+    list_display = ('user', 'class_reserved', 'position', 'status', 'joined_at', 'notified_at')
+    search_fields = ('user__email', 'class_reserved__name')
+    list_filter = ('status', 'joined_at', 'notified_at')
+    readonly_fields = ('position', 'joined_at', 'created_at', 'updated_at')

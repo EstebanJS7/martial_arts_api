@@ -202,3 +202,81 @@ class ClassTemplate(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.get_class_type_display()})'
+
+
+class ClassWaitlist(models.Model):
+    """
+    Lista de espera para clases que están llenas.
+    Permite a los usuarios registrarse para recibir notificaciones cuando haya cupos disponibles.
+    """
+    STATUS_CHOICES = [
+        ('waiting', 'En espera'),
+        ('notified', 'Notificado'),
+        ('converted', 'Convertido a reserva'),
+        ('cancelled', 'Cancelado'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='class_waitlists'
+    )
+    class_reserved = models.ForeignKey(
+        Class,
+        on_delete=models.CASCADE,
+        related_name='waitlist_entries'
+    )
+    position = models.IntegerField(
+        default=1,
+        help_text='Posición en la lista de espera'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='waiting',
+        help_text='Estado en la lista de espera'
+    )
+    joined_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='Fecha y hora en que se unió a la lista de espera'
+    )
+    notified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Fecha y hora en que fue notificado de un cupo disponible'
+    )
+    converted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Fecha y hora en que se convirtió en reserva'
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text='Notas adicionales sobre la entrada en la lista de espera'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'class_reserved')
+        verbose_name = "Lista de espera de clase"
+        verbose_name_plural = "Listas de espera de clases"
+        ordering = ['position', 'joined_at']
+        indexes = [
+            models.Index(fields=['class_reserved', 'status']),
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['position']),
+        ]
+
+    def __str__(self):
+        return f'{self.user.email} - {self.class_reserved.name} (Posición {self.position})'
+
+    def save(self, *args, **kwargs):
+        # Si es un nuevo registro y no tiene posición asignada, asignar la siguiente posición disponible
+        if not self.pk and not self.position:
+            max_position = ClassWaitlist.objects.filter(
+                class_reserved=self.class_reserved,
+                status='waiting'
+            ).aggregate(models.Max('position'))['position__max']
+            self.position = (max_position or 0) + 1
+        super().save(*args, **kwargs)

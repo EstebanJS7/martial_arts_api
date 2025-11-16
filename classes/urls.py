@@ -22,6 +22,10 @@ from .views import (
     ClassTrendsView,
     TopInstructorsView,
     PopularClassesView,
+    ClassWaitlistListView,
+    ClassWaitlistCreateView,
+    ClassWaitlistDeleteView,
+    ClassWaitlistConvertView,
 )
 
 urlpatterns = [
@@ -52,4 +56,10 @@ urlpatterns = [
     path('stats/trends/', ClassTrendsView.as_view(), name='class-trends'),
     path('stats/top-instructors/', TopInstructorsView.as_view(), name='class-top-instructors'),
     path('stats/popular-classes/', PopularClassesView.as_view(), name='class-popular-classes'),
+    
+    # Rutas para Lista de Espera de Clases
+    path('waitlist/', ClassWaitlistListView.as_view(), name='class-waitlist-list'),
+    path('waitlist/create/', ClassWaitlistCreateView.as_view(), name='class-waitlist-create'),
+    path('waitlist/<int:pk>/delete/', ClassWaitlistDeleteView.as_view(), name='class-waitlist-delete'),
+    path('waitlist/<int:pk>/convert/', ClassWaitlistConvertView.as_view(), name='class-waitlist-convert'),
 ]

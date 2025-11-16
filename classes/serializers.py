@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate
+from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate, ClassWaitlist
 
 User = get_user_model()
 
@@ -12,6 +12,8 @@ class ClassSerializer(serializers.ModelSerializer):
     available_spots = serializers.SerializerMethodField()
     is_reserved = serializers.SerializerMethodField()
     is_reservable = serializers.SerializerMethodField()
+    is_in_waitlist = serializers.SerializerMethodField()
+    waitlist_count = serializers.SerializerMethodField()
     formatted_date = serializers.SerializerMethodField()
     formatted_duration = serializers.SerializerMethodField()
     class_type_display = serializers.CharField(source='get_class_type_display', read_only=True)
@@ -84,6 +86,20 @@ class ClassSerializer(serializers.ModelSerializer):
                 return False
         
         return True
+    
+    def get_is_in_waitlist(self, obj):
+        """Verifica si el usuario actual está en la lista de espera de esta clase."""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.waitlist_entries.filter(
+                user=request.user,
+                status='waiting'
+            ).exists()
+        return False
+    
+    def get_waitlist_count(self, obj):
+        """Retorna el número de usuarios en la lista de espera."""
+        return obj.waitlist_entries.filter(status='waiting').count()
     
     def get_formatted_date(self, obj):
         if obj.date:
@@ -265,3 +281,42 @@ class ClassTemplateCreateSerializer(serializers.ModelSerializer):
         required=False,
         help_text="Días de la semana (0=Lunes, 6=Domingo)"
     )
+
+
+class ClassWaitlistSerializer(serializers.ModelSerializer):
+    """Serializer para la lista de espera de clases."""
+    user_email = serializers.SerializerMethodField()
+    user_full_name = serializers.SerializerMethodField()
+    class_name = serializers.SerializerMethodField()
+    class_date = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = ClassWaitlist
+        fields = '__all__'
+        read_only_fields = ('user', 'position', 'joined_at', 'created_at', 'updated_at')
+    
+    def get_user_email(self, obj):
+        return obj.user.email if obj.user else None
+    
+    def get_user_full_name(self, obj):
+        if obj.user:
+            first_name = obj.user.first_name or ""
+            last_name = obj.user.last_name or ""
+            if first_name or last_name:
+                return f"{first_name} {last_name}".strip()
+            return obj.user.email
+        return None
+    
+    def get_class_name(self, obj):
+        return obj.class_reserved.name if obj.class_reserved else None
+    
+    def get_class_date(self, obj):
+        if obj.class_reserved and obj.class_reserved.date:
+            return obj.class_reserved.date.strftime("%d/%m/%Y %H:%M")
+        return None
+
+
+class ClassWaitlistCreateSerializer(serializers.Serializer):
+    """Serializer para crear una entrada en la lista de espera."""
+    class_id = serializers.IntegerField()
