@@ -249,3 +249,4 @@ def generate_monthly_report():
             'error': str(e),
         }
 
+

@@ -82,3 +82,4 @@ def send_attendance_reminders():
             'error': str(e),
         }
 
+

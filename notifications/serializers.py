@@ -26,3 +26,4 @@ class UserNotificationPreferenceSerializer(serializers.ModelSerializer):
 
 
 
+

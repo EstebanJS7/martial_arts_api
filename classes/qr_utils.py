@@ -122,3 +122,4 @@ def validate_qr_token_and_checkin(token: str, user) -> dict:
         'check_in_time': attendance.check_in_time.isoformat() if attendance.check_in_time else None,
     }
 
+

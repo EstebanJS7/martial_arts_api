@@ -87,3 +87,4 @@ print("\n💡 Las notificaciones deberían aparecer en tiempo real si el WebSock
 print("💡 También puedes verlas en: http://localhost:8000/admin/notifications/notification/")
 
 
+

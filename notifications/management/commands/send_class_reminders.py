@@ -44,3 +44,4 @@ class Command(BaseCommand):
                 self.style.SUCCESS('✓ Todos los recordatorios han sido procesados')
             )
 
+

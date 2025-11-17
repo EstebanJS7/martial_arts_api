@@ -262,3 +262,4 @@ Después de configurar Redis, verifica que todo funciona:
 4. **Backup**: Redis puede persistir datos en disco (configuración por defecto)
 5. **Rendimiento**: Redis es muy rápido, pero para alta carga considera clustering
 
+

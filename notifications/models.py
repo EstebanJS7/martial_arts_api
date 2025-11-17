@@ -44,3 +44,4 @@ class UserNotificationPreference(models.Model):
 
 
 
+
