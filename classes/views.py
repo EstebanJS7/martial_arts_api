@@ -15,6 +15,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate, ClassWaitlist
 from .services import ClassDashboardService, ClassManagementService
 from .qr_utils import generate_qr_code_image, validate_qr_token_and_checkin
+from .export_service import ClassExportService
 from .serializers import (
     ClassSerializer, 
     UserClassReservationSerializer, 
@@ -1189,3 +1190,233 @@ class ClassReminderTriggerView(APIView):
             result = ClassManagementService.send_class_reminders(reminder_type=reminder_type)
 
         return Response(result, status=status.HTTP_200_OK)
+
+
+# --- Vistas para Exportación de Reportes ---
+
+class AttendanceReportExportView(APIView):
+    """
+    Exporta reporte de asistencia de una clase en PDF o Excel.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request, class_id):
+        format_type = request.query_params.get('format', 'pdf').lower()
+        if format_type not in ['pdf', 'excel']:
+            return Response(
+                {'error': 'Formato no válido. Use "pdf" o "excel".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            response = ClassExportService.export_attendance_report(class_id, format=format_type)
+            return response
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error al exportar reporte de asistencia: {str(e)}")
+            return Response(
+                {'error': 'Error al generar el reporte.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class InstructorStatisticsExportView(APIView):
+    """
+    Exporta estadísticas de un instructor en PDF o Excel.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request, instructor_id):
+        format_type = request.query_params.get('format', 'pdf').lower()
+        period_months = int(request.query_params.get('period_months', 6))
+        
+        if format_type not in ['pdf', 'excel']:
+            return Response(
+                {'error': 'Formato no válido. Use "pdf" o "excel".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            response = ClassExportService.export_instructor_statistics(
+                instructor_id, period_months=period_months, format=format_type
+            )
+            return response
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error al exportar estadísticas de instructor: {str(e)}")
+            return Response(
+                {'error': 'Error al generar el reporte.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class OccupancyAnalysisExportView(APIView):
+    """
+    Exporta análisis de ocupación en PDF o Excel.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        format_type = request.query_params.get('format', 'pdf').lower()
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if format_type not in ['pdf', 'excel']:
+            return Response(
+                {'error': 'Formato no válido. Use "pdf" o "excel".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'Se requieren las fechas start_date y end_date.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from datetime import datetime
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {'error': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            response = ClassExportService.export_occupancy_analysis(
+                start_date, end_date, format=format_type
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Error al exportar análisis de ocupación: {str(e)}")
+            return Response(
+                {'error': 'Error al generar el reporte.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class WaitlistReportExportView(APIView):
+    """
+    Exporta reporte de lista de espera en PDF o Excel.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        format_type = request.query_params.get('format', 'pdf').lower()
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if format_type not in ['pdf', 'excel']:
+            return Response(
+                {'error': 'Formato no válido. Use "pdf" o "excel".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        start_date_parsed = None
+        end_date_parsed = None
+        
+        if start_date:
+            try:
+                from datetime import datetime
+                start_date_parsed = datetime.strptime(start_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if end_date:
+            try:
+                from datetime import datetime
+                end_date_parsed = datetime.strptime(end_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        try:
+            response = ClassExportService.export_waitlist_report(
+                start_date=start_date_parsed, end_date=end_date_parsed, format=format_type
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Error al exportar reporte de lista de espera: {str(e)}")
+            return Response(
+                {'error': 'Error al generar el reporte.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CancellationStatisticsExportView(APIView):
+    """
+    Exporta estadísticas de cancelaciones en PDF o Excel.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        format_type = request.query_params.get('format', 'pdf').lower()
+        period_months = int(request.query_params.get('period_months', 6))
+        instructor_id = request.query_params.get('instructor_id')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if format_type not in ['pdf', 'excel']:
+            return Response(
+                {'error': 'Formato no válido. Use "pdf" o "excel".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        instructor_id_parsed = None
+        if instructor_id:
+            try:
+                instructor_id_parsed = int(instructor_id)
+            except (ValueError, TypeError):
+                instructor_id_parsed = None
+        
+        start_date_parsed = None
+        end_date_parsed = None
+        
+        if start_date:
+            try:
+                from datetime import datetime
+                start_date_parsed = datetime.strptime(start_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if end_date:
+            try:
+                from datetime import datetime
+                end_date_parsed = datetime.strptime(end_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        try:
+            response = ClassExportService.export_cancellation_statistics(
+                period_months=period_months,
+                instructor_id=instructor_id_parsed,
+                start_date=start_date_parsed,
+                end_date=end_date_parsed,
+                format=format_type
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Error al exportar estadísticas de cancelaciones: {str(e)}")
+            return Response(
+                {'error': 'Error al generar el reporte.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

@@ -34,6 +34,11 @@ from .views import (
     ClassAttendanceHealthCheckView,
     ClassStatisticsDetailView,
     ClassReminderTriggerView,
+    AttendanceReportExportView,
+    InstructorStatisticsExportView,
+    OccupancyAnalysisExportView,
+    WaitlistReportExportView,
+    CancellationStatisticsExportView,
 )
 
 urlpatterns = [
@@ -82,4 +87,11 @@ urlpatterns = [
     path('<int:class_id>/attendance/check/', ClassAttendanceHealthCheckView.as_view(), name='class-attendance-check'),
     path('<int:class_id>/statistics/', ClassStatisticsDetailView.as_view(), name='class-statistics-detail'),
     path('manage/reminders/', ClassReminderTriggerView.as_view(), name='class-reminders-trigger'),
+    
+    # Rutas para exportación de reportes
+    path('<int:class_id>/reports/attendance/', AttendanceReportExportView.as_view(), name='class-attendance-export'),
+    path('reports/instructor/<int:instructor_id>/', InstructorStatisticsExportView.as_view(), name='class-instructor-stats-export'),
+    path('reports/occupancy/', OccupancyAnalysisExportView.as_view(), name='class-occupancy-export'),
+    path('reports/waitlist/', WaitlistReportExportView.as_view(), name='class-waitlist-export'),
+    path('reports/cancellations/', CancellationStatisticsExportView.as_view(), name='class-cancellations-export'),
 ]

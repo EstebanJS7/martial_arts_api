@@ -11,7 +11,8 @@ from .views import (
     PaymentTransactionListView,
     PaymentDashboardView,
     PaymentStatsView,
-    PaymentTrendsView
+    PaymentTrendsView,
+    PaymentStatusExportView
 )
 
 urlpatterns = [
@@ -40,4 +41,7 @@ urlpatterns = [
     path('dashboard/', PaymentDashboardView.as_view(), name='payment-dashboard'),
     path('stats/monthly/', PaymentStatsView.as_view(), name='payment-stats-monthly'),
     path('stats/trends/', PaymentTrendsView.as_view(), name='payment-trends'),
+    
+    # Endpoint para exportación de reportes
+    path('reports/status/', PaymentStatusExportView.as_view(), name='payment-status-export'),
 ]
