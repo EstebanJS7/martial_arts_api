@@ -332,6 +332,189 @@ class ClassDashboardService:
             })
         
         return result
+    
+    @classmethod
+    def get_cancellation_analysis(cls, period_months=6, instructor_id=None, start_date=None, end_date=None):
+        """
+        Obtiene análisis detallado de cancelaciones de clases.
+        
+        Args:
+            period_months: Período en meses para analizar (default: 6)
+            instructor_id: Filtrar por instructor (opcional)
+            start_date: Fecha de inicio para filtrar (opcional)
+            end_date: Fecha de fin para filtrar (opcional)
+        """
+        today = timezone.now().date()
+        
+        # Determinar rango de fechas
+        if start_date and end_date:
+            period_start = start_date
+            period_end = end_date
+        else:
+            period_start = today.replace(day=1) - timedelta(days=(period_months - 1) * 30)
+            period_end = today
+        
+        # Base queryset con filtros
+        base_queryset = Class.objects.filter(
+            date__date__gte=period_start,
+            date__date__lte=period_end
+        )
+        
+        if instructor_id:
+            base_queryset = base_queryset.filter(instructor_id=instructor_id)
+        
+        # Total de clases y cancelaciones
+        total_classes = base_queryset.count()
+        cancelled_classes = base_queryset.filter(is_cancelled=True)
+        total_cancelled = cancelled_classes.count()
+        cancellation_rate = (total_cancelled / total_classes * 100) if total_classes > 0 else Decimal('0')
+        
+        # Cancelaciones por instructor
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        cancellations_by_instructor = User.objects.filter(
+            instructed_classes__in=cancelled_classes
+        ).annotate(
+            cancelled_count=Count('instructed_classes', filter=Q(instructed_classes__is_cancelled=True))
+        ).filter(cancelled_count__gt=0).order_by('-cancelled_count')[:10]
+        
+        instructor_stats = []
+        for instructor in cancellations_by_instructor:
+            total_instructor_classes = base_queryset.filter(instructor=instructor).count()
+            instructor_cancelled = cancelled_classes.filter(instructor=instructor).count()
+            instructor_rate = (instructor_cancelled / total_instructor_classes * 100) if total_instructor_classes > 0 else 0
+            
+            instructor_stats.append({
+                'id': instructor.id,
+                'email': instructor.email,
+                'first_name': instructor.first_name or '',
+                'last_name': instructor.last_name or '',
+                'cancelled_count': instructor_cancelled,
+                'total_classes': total_instructor_classes,
+                'cancellation_rate': float(instructor_rate),
+            })
+        
+        # Cancelaciones por tipo de clase
+        cancellations_by_type = cancelled_classes.values('class_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        type_stats = []
+        for item in cancellations_by_type:
+            class_type = item['class_type'] or 'unknown'
+            total_type_classes = base_queryset.filter(class_type=class_type).count()
+            type_cancelled = item['count']
+            type_rate = (type_cancelled / total_type_classes * 100) if total_type_classes > 0 else 0
+            
+            type_stats.append({
+                'class_type': class_type,
+                'cancelled_count': type_cancelled,
+                'total_classes': total_type_classes,
+                'cancellation_rate': float(type_rate),
+            })
+        
+        # Razones más comunes de cancelación
+        from collections import Counter
+        reasons = cancelled_classes.exclude(cancellation_reason__isnull=True).exclude(
+            cancellation_reason=''
+        ).values_list('cancellation_reason', flat=True)
+        
+        # Contar razones (normalizar texto)
+        reason_counter = Counter()
+        for reason in reasons:
+            # Normalizar: tomar primeras palabras como categoría
+            words = reason.lower().strip().split()[:3]
+            category = ' '.join(words) if words else 'Sin categoría'
+            reason_counter[category] += 1
+        
+        top_reasons = [
+            {'reason': reason, 'count': count}
+            for reason, count in reason_counter.most_common(10)
+        ]
+        
+        # Tendencias de cancelación por mes
+        monthly_trends = []
+        for i in range(period_months):
+            month_date = period_end.replace(day=1) - timedelta(days=30 * i)
+            month_start = month_date.replace(day=1)
+            if month_date.month == 12:
+                month_end = date(month_date.year + 1, 1, 1) - timedelta(days=1)
+            else:
+                month_end = date(month_date.year, month_date.month + 1, 1) - timedelta(days=1)
+            
+            month_classes = base_queryset.filter(
+                date__date__gte=month_start,
+                date__date__lte=month_end
+            )
+            month_total = month_classes.count()
+            month_cancelled = month_classes.filter(is_cancelled=True).count()
+            month_rate = (month_cancelled / month_total * 100) if month_total > 0 else 0
+            
+            monthly_trends.append({
+                'period': month_start.strftime('%Y-%m'),
+                'total_classes': month_total,
+                'cancelled_classes': month_cancelled,
+                'cancellation_rate': float(month_rate),
+            })
+        
+        monthly_trends.reverse()
+        
+        # Cancelaciones por día de la semana
+        # PostgreSQL: DOW devuelve 0=Domingo, 1=Lunes, ..., 6=Sábado
+        from django.db.models import IntegerField
+        from django.db.models.functions import Extract
+        
+        cancellations_by_weekday = cancelled_classes.annotate(
+            weekday=Extract('date', 'dow', output_field=IntegerField())
+        ).values('weekday').annotate(
+            count=Count('id')
+        ).order_by('weekday')
+        
+        weekday_names = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+        weekday_stats = []
+        for item in cancellations_by_weekday:
+            weekday_num = int(item['weekday'])
+            if 0 <= weekday_num <= 6:
+                weekday_stats.append({
+                    'weekday': weekday_names[weekday_num],
+                    'weekday_num': weekday_num,
+                    'count': item['count'],
+                })
+        
+        # Cancelaciones recientes (últimas 10)
+        recent_cancellations = cancelled_classes.order_by('-cancelled_at')[:10].values(
+            'id', 'name', 'date', 'cancellation_reason', 'cancelled_at',
+            'instructor__email', 'instructor__first_name', 'instructor__last_name'
+        )
+        
+        recent_list = []
+        for cancel in recent_cancellations:
+            recent_list.append({
+                'id': cancel['id'],
+                'name': cancel['name'],
+                'date': cancel['date'].isoformat() if cancel['date'] else None,
+                'cancellation_reason': cancel['cancellation_reason'] or 'Sin razón especificada',
+                'cancelled_at': cancel['cancelled_at'].isoformat() if cancel['cancelled_at'] else None,
+                'instructor_email': cancel['instructor__email'] or '',
+                'instructor_name': f"{cancel['instructor__first_name'] or ''} {cancel['instructor__last_name'] or ''}".strip(),
+            })
+        
+        return {
+            'summary': {
+                'total_classes': total_classes,
+                'total_cancelled': total_cancelled,
+                'cancellation_rate': float(cancellation_rate),
+                'period_start': period_start.isoformat(),
+                'period_end': period_end.isoformat(),
+            },
+            'by_instructor': instructor_stats,
+            'by_type': type_stats,
+            'top_reasons': top_reasons,
+            'monthly_trends': monthly_trends,
+            'by_weekday': weekday_stats,
+            'recent_cancellations': recent_list,
+        }
 
 
 class ClassManagementService:

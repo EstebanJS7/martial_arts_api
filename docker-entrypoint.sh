@@ -23,3 +23,4 @@ echo "Iniciando servidor..."
 exec "$@"
 
 
+

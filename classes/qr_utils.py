@@ -123,3 +123,4 @@ def validate_qr_token_and_checkin(token: str, user) -> dict:
     }
 
 
+

@@ -698,6 +698,50 @@ class PopularClassesView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
+class CancellationAnalysisView(APIView):
+    """
+    Vista para obtener análisis detallado de cancelaciones de clases.
+    Solo admin/instructor.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+    
+    def get(self, request):
+        period_months = int(request.query_params.get('period_months', 6))
+        instructor_id = request.query_params.get('instructor_id')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # Convertir instructor_id a int si existe
+        if instructor_id:
+            try:
+                instructor_id = int(instructor_id)
+            except (ValueError, TypeError):
+                instructor_id = None
+        
+        # Convertir fechas si existen
+        from datetime import datetime
+        if start_date:
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                start_date = None
+        
+        if end_date:
+            try:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                end_date = None
+        
+        data = ClassDashboardService.get_cancellation_analysis(
+            period_months=period_months,
+            instructor_id=instructor_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return Response(data, status=status.HTTP_200_OK)
+
+
 # --- Vistas para Lista de Espera de Clases ---
 
 class ClassWaitlistListView(APIView):

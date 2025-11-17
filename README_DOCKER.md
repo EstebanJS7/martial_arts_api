@@ -47,3 +47,4 @@ docker-compose exec web python manage.py shell
 Ver `DOCKER_SETUP.md` para documentación detallada.
 
 
+

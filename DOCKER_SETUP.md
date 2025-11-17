@@ -234,3 +234,4 @@ celery_worker:
 - Los logs se muestran en tiempo real con `docker-compose logs -f`
 
 
+

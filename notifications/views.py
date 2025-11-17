@@ -48,3 +48,4 @@ class UserNotificationPreferenceView(generics.RetrieveUpdateAPIView):
 
 
 
+

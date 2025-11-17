@@ -110,3 +110,4 @@ CELERY_BEAT_SCHEDULE = {
 4. **Logs**: Los recordatorios se registran en la base de datos como notificaciones normales, pero también puedes agregar logging adicional si es necesario.
 
 
+

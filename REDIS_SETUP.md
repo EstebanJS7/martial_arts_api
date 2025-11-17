@@ -263,3 +263,4 @@ Después de configurar Redis, verifica que todo funciona:
 5. **Rendimiento**: Redis es muy rápido, pero para alta carga considera clustering
 
 
+
