@@ -7,7 +7,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 # from rest_framework_simplejwt.views import TokenObtainPairView
-from .throttling import LoginRateThrottle
+from .throttling import (
+    LoginRateThrottle,
+    RegisterRateThrottle,
+    PasswordResetRateThrottle,
+    PasswordResetConfirmRateThrottle,
+    BruteForceProtectionThrottle,
+)
 from .serializers import UserSerializer 
 from .permissions import IsAdminUser, IsAdminOrInstructor
 from .forms import EmailAuthenticationForm
@@ -37,6 +43,7 @@ class RegisterView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
     permission_classes = (AllowAny,)
     serializer_class = RegisterSerializer
+    throttle_classes = [RegisterRateThrottle]
     
     def perform_create(self, serializer):
         # Crear el usuario
@@ -50,15 +57,36 @@ class RegisterView(generics.CreateAPIView):
             logger.error(f"Error creando pagos para el usuario {user.email}: {e}")
 
 class LoginView(APIView):
-    # Comentado temporalmente para eliminar dependencia de Redis
-    # throttle_classes = [LoginRateThrottle]
+    """
+    Vista de login con protección contra fuerza bruta y rate limiting.
+    """
+    throttle_classes = [LoginRateThrottle, BruteForceProtectionThrottle]
     permission_classes = (AllowAny,)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.brute_force_throttle = None
+    
+    def check_throttles(self, request):
+        """
+        Verifica los throttles y obtiene la instancia de BruteForceProtectionThrottle.
+        """
+        super().check_throttles(request)
+        # Obtener la instancia de BruteForceProtectionThrottle para uso posterior
+        for throttle in self.get_throttles():
+            if isinstance(throttle, BruteForceProtectionThrottle):
+                self.brute_force_throttle = throttle
+                break
     
     def post(self, request, *args, **kwargs):
         form = EmailAuthenticationForm(data=request.data)
         if form.is_valid():
             user = form.get_user()
             refresh = RefreshToken.for_user(user)
+            
+            # Resetear intentos fallidos después de login exitoso
+            if self.brute_force_throttle:
+                self.brute_force_throttle.reset_failed_attempts(request)
             
             # Obtener el perfil del usuario
             try:
@@ -88,6 +116,11 @@ class LoginView(APIView):
                 'access': str(refresh.access_token),
                 'user': user_data,
             })
+        
+        # Registrar intento fallido para protección contra fuerza bruta
+        if self.brute_force_throttle:
+            self.brute_force_throttle.record_failed_attempt(request)
+        
         return Response(form.errors, status=400)
     
 class LogoutView(APIView):
@@ -113,6 +146,7 @@ class PasswordResetRequestView(APIView):
     Envía un correo electrónico con un enlace para restablecer la contraseña.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [PasswordResetRateThrottle]
     
     def post(self, request):
         email = request.data.get('email')
@@ -181,6 +215,7 @@ class PasswordResetConfirmView(APIView):
     Verifica el token y actualiza la contraseña del usuario.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [PasswordResetConfirmRateThrottle]
     
     def post(self, request):
         token = request.data.get('token')

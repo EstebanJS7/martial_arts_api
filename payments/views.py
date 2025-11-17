@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
+from users.throttling import SensitiveEndpointThrottle
 
 from .models import Payment, QuotaConfig, PaymentTransaction
 from .serializers import (
@@ -148,6 +149,7 @@ class ApplyUserPaymentView(APIView):
     (debe ser el mismo usuario o tener privilegios de administrador).
     """
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [SensitiveEndpointThrottle]
 
     def post(self, request, user_id, payment_amount):
         # Validar mediante serializer que el monto es positivo

@@ -168,16 +168,21 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    # Comentado temporalmente para eliminar dependencia de Redis
-    # 'DEFAULT_THROTTLE_CLASSES': [
-    #     'rest_framework.throttling.UserRateThrottle',
-    #     'rest_framework.throttling.AnonRateThrottle',
-    # ],
-    # 'DEFAULT_THROTTLE_RATES': {
-    #     'user': '1000/day',
-    #     'anon': '100/day',
-    #     'login': '5/minute',
-    # },
+    # Throttling y Rate Limiting
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'user': '1000/hour',  # Usuarios autenticados: 1000 requests por hora
+        'anon': '100/hour',    # Usuarios anónimos: 100 requests por hora
+        'login': '5/minute',   # Login: 5 intentos por minuto
+        'register': '3/hour',   # Registro: 3 intentos por hora
+        'password_reset': '3/hour',  # Reset de contraseña: 3 intentos por hora
+        'password_reset_confirm': '5/hour',  # Confirmación de reset: 5 intentos por hora
+        'sensitive': '20/hour',  # Endpoints sensibles: 20 requests por hora
+        'brute_force': '10/minute',  # Protección contra fuerza bruta: 10 intentos por minuto
+    },
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
     ],
@@ -274,11 +279,23 @@ ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_USERNAME_REQUIRED = False
 
-# Configuración de Caché
+# Configuración de Caché (usando Redis para throttling y rate limiting)
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'martial_arts_cache',
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': REDIS_URL,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'PARSER_CLASS': 'redis.connection.HiredisParser',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 50,
+                'retry_on_timeout': True,
+            },
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+            'IGNORE_EXCEPTIONS': True,
+        },
+        'KEY_PREFIX': 'martial_arts',
+        'TIMEOUT': 300,  # 5 minutos por defecto
     }
 }
 
