@@ -9,9 +9,11 @@ from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from datetime import timedelta
+from django.shortcuts import get_object_or_404
+from django.core.exceptions import ObjectDoesNotExist
 
 from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate, ClassWaitlist
-from .services import ClassDashboardService
+from .services import ClassDashboardService, ClassManagementService
 from .qr_utils import generate_qr_code_image, validate_qr_token_and_checkin
 from .serializers import (
     ClassSerializer, 
@@ -23,6 +25,8 @@ from .serializers import (
     ClassTemplateSerializer,
     ClassWaitlistSerializer,
     ClassWaitlistCreateSerializer,
+    RecurringClassCreateSerializer,
+    ClassReminderTriggerSerializer,
 )
 from users.permissions import IsAdminUser, IsInstructorUser
 from rest_framework.permissions import IsAuthenticated
@@ -1030,4 +1034,114 @@ class QRCheckInView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        return Response(result, status=status.HTTP_200_OK)
+
+
+# --- Vistas avanzadas de gestión ---
+
+class ClassRecurringCreateView(APIView):
+    """
+    Crea clases recurrentes basadas en una plantilla o configuración personalizada.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+
+    def post(self, request):
+        serializer = RecurringClassCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+
+        base_fields = [
+            'name',
+            'description',
+            'instructor',
+            'max_students',
+            'duration',
+            'duration_minutes',
+            'class_type',
+            'difficulty_level',
+            'location',
+            'equipment_needed',
+            'notes',
+        ]
+        base_data = {field: validated[field] for field in base_fields if field in validated}
+
+        recurrence_settings = {
+            'template_id': validated.get('template_id'),
+            'start_date': validated['start_date'],
+            'end_date': validated.get('end_date'),
+            'occurrences': validated.get('occurrences', 4),
+            'frequency': validated.get('frequency', 'weekly'),
+            'days_of_week': validated.get('days_of_week'),
+        }
+
+        try:
+            result = ClassManagementService.create_recurring_classes(
+                user=request.user,
+                base_data=base_data,
+                recurrence_settings=recurrence_settings,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc))
+        except ObjectDoesNotExist:
+            return Response(
+                {"detail": "La plantilla especificada no existe."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serialized_classes = ClassSerializer(result['classes'], many=True, context={'request': request})
+        response_status = status.HTTP_201_CREATED if result['created'] else status.HTTP_200_OK
+
+        return Response(
+            {
+                'created': result['created'],
+                'errors': result['errors'],
+                'classes': serialized_classes.data,
+            },
+            status=response_status,
+        )
+
+
+class ClassAttendanceHealthCheckView(APIView):
+    """
+    Garantiza que todas las reservas de una clase tengan registro de asistencia.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+
+    def post(self, request, class_id):
+        class_obj = get_object_or_404(Class, pk=class_id)
+        result = ClassManagementService.check_attendance(class_obj, marked_by=request.user)
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ClassStatisticsDetailView(APIView):
+    """
+    Retorna estadísticas detalladas de una clase específica.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+
+    def get(self, request, class_id):
+        class_obj = get_object_or_404(Class, pk=class_id)
+        stats = ClassManagementService.get_class_statistics(class_obj)
+        return Response(stats, status=status.HTTP_200_OK)
+
+
+class ClassReminderTriggerView(APIView):
+    """
+    Permite lanzar recordatorios de clases de forma manual o automática.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+
+    def post(self, request):
+        serializer = ClassReminderTriggerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        reminder_type = serializer.validated_data.get('reminder_type', 'auto')
+        class_id = serializer.validated_data.get('class_id')
+
+        if class_id:
+            class_obj = get_object_or_404(Class, pk=class_id)
+            result = ClassManagementService.send_class_reminders(class_obj=class_obj, reminder_type=reminder_type)
+        else:
+            result = ClassManagementService.send_class_reminders(reminder_type=reminder_type)
+
         return Response(result, status=status.HTTP_200_OK)

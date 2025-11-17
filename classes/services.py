@@ -1,12 +1,23 @@
 """
 Servicio para calcular estadísticas de clases y generar datos para el dashboard.
 """
+from django.db import transaction
 from django.db.models import Count, Avg, Q, Sum, F
 from django.utils import timezone
+from django.core.exceptions import ObjectDoesNotExist
 from datetime import timedelta, date
 from decimal import Decimal
 
-from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate
+from .models import (
+    Class,
+    UserClassReservation,
+    ClassAttendance,
+    ClassTemplate,
+    ClassWaitlist,
+)
+from .validators import ClassValidator
+from notifications.notification_scheduler import NotificationScheduler
+from notifications.services import create_and_notify
 
 
 class ClassDashboardService:
@@ -321,6 +332,268 @@ class ClassDashboardService:
             })
         
         return result
+
+
+class ClassManagementService:
+    """
+    Servicio para operaciones avanzadas de gestión de clases.
+    """
+
+    @staticmethod
+    def _make_aware(dt):
+        if dt and timezone.is_naive(dt):
+            return timezone.make_aware(dt, timezone.get_current_timezone())
+        return dt
+
+    @staticmethod
+    def _generate_recurrence_dates(start_date, end_date=None, occurrences=4, frequency='weekly', days_of_week=None):
+        """
+        Genera una lista de fechas basadas en la recurrencia solicitada.
+        days_of_week sigue el formato Python (0 = lunes ... 6 = domingo).
+        """
+        if occurrences < 1:
+            occurrences = 1
+
+        dates = []
+        current = start_date
+        allowed_days = days_of_week or [start_date.weekday()]
+
+        if frequency == 'daily':
+            while len(dates) < occurrences and (end_date is None or current <= end_date):
+                if current >= start_date:
+                    dates.append(current)
+                current += timedelta(days=1)
+        elif frequency == 'weekly':
+            # Iterar día a día hasta cumplir condiciones
+            while len(dates) < occurrences and (end_date is None or current <= end_date):
+                if current.weekday() in allowed_days and current >= start_date:
+                    dates.append(current)
+                current += timedelta(days=1)
+        elif frequency == 'monthly':
+            helper_date = start_date
+            while len(dates) < occurrences and (end_date is None or helper_date <= end_date):
+                dates.append(helper_date)
+                # Calcular siguiente mes conservando hora/minuto
+                year = helper_date.year + (helper_date.month // 12)
+                month = helper_date.month % 12 + 1
+                day = helper_date.day
+                # Ajustar día al final de mes si necesario
+                for day_option in range(day, 0, -1):
+                    try:
+                        helper_date = helper_date.replace(year=year, month=month, day=day_option)
+                        break
+                    except ValueError:
+                        continue
+            # Si no se generaron fechas (por ejemplo, day 31), garantizar al menos una
+            if not dates:
+                dates.append(start_date)
+        else:
+            dates.append(start_date)
+
+        return dates[:occurrences]
+
+    @staticmethod
+    def create_recurring_classes(user, base_data, recurrence_settings):
+        """
+        Crea clases recurrentes a partir de un conjunto de parámetros o una plantilla.
+        Retorna un diccionario con el resumen de creación.
+        """
+        template = None
+        template_id = recurrence_settings.get('template_id')
+        if template_id:
+            try:
+                template = ClassTemplate.objects.get(pk=template_id)
+            except ClassTemplate.DoesNotExist:
+                raise ObjectDoesNotExist("La plantilla especificada no existe.")
+
+        start_date = ClassManagementService._make_aware(recurrence_settings['start_date'])
+        end_date = ClassManagementService._make_aware(recurrence_settings.get('end_date')) if recurrence_settings.get('end_date') else None
+        occurrences = recurrence_settings.get('occurrences', 4)
+        frequency = recurrence_settings.get('frequency', 'weekly')
+        days_of_week = recurrence_settings.get('days_of_week')
+
+        base_payload = {}
+        if template:
+            base_payload.update({
+                'name': template.name,
+                'description': template.description,
+                'instructor': template.instructor,
+                'duration': template.duration,
+                'max_students': template.max_students,
+                'class_type': template.class_type,
+                'difficulty_level': template.difficulty_level,
+                'location': template.location,
+                'equipment_needed': template.equipment_needed,
+                'notes': template.prerequisites,
+            })
+        base_payload.update(base_data)
+
+        if not base_payload.get('name'):
+            raise ValueError("El nombre de la clase es obligatorio.")
+        if not base_payload.get('instructor'):
+            raise ValueError("Se requiere un instructor para crear clases.")
+        if not base_payload.get('max_students'):
+            raise ValueError("Debe especificarse la capacidad máxima de estudiantes.")
+
+        duration_minutes = base_payload.pop('duration_minutes', None)
+        duration_field = base_payload.get('duration')
+
+        if duration_minutes:
+            base_payload['duration'] = timedelta(minutes=duration_minutes)
+        elif isinstance(duration_field, (int, float)):
+            base_payload['duration'] = timedelta(minutes=duration_field)
+
+        schedule = ClassManagementService._generate_recurrence_dates(
+            start_date=start_date,
+            end_date=end_date,
+            occurrences=occurrences,
+            frequency=frequency,
+            days_of_week=days_of_week,
+        )
+
+        created_instances = []
+        validation_errors = []
+
+        with transaction.atomic():
+            for scheduled_date in schedule:
+                class_data = {
+                    **base_payload,
+                    'date': scheduled_date,
+                }
+
+                validation_result = ClassValidator.validate_class(class_data)
+                if not validation_result['valid']:
+                    validation_errors.append({
+                        'date': scheduled_date.isoformat(),
+                        'errors': validation_result['errors'],
+                    })
+                    continue
+
+                instance = Class.objects.create(**class_data)
+                created_instances.append(instance)
+
+        return {
+            'created': len(created_instances),
+            'errors': validation_errors,
+            'classes': created_instances,
+        }
+
+    @staticmethod
+    def check_attendance(class_obj, marked_by=None):
+        """
+        Garantiza que todas las reservas tengan un registro de asistencia asociado.
+        """
+        reservations = UserClassReservation.objects.filter(
+            class_reserved=class_obj,
+            is_cancelled=False,
+        ).select_related('user')
+
+        created_count = 0
+
+        for reservation in reservations:
+            attendance, created = ClassAttendance.objects.get_or_create(
+                class_reserved=class_obj,
+                user=reservation.user,
+                defaults={
+                    'attended': False,
+                    'marked_by': marked_by,
+                },
+            )
+            if created:
+                created_count += 1
+
+        attendance_count = ClassAttendance.objects.filter(
+            class_reserved=class_obj,
+            attended=True,
+        ).count()
+        no_show_count = ClassAttendance.objects.filter(
+            class_reserved=class_obj,
+            attended=False,
+        ).count()
+
+        Class.objects.filter(pk=class_obj.pk).update(
+            attendance_count=attendance_count,
+            no_show_count=no_show_count,
+        )
+
+        return {
+            'created_records': created_count,
+            'attendance_count': attendance_count,
+            'no_show_count': no_show_count,
+            'total_reservations': reservations.count(),
+        }
+
+    @staticmethod
+    def get_class_statistics(class_obj):
+        """
+        Retorna estadísticas detalladas de una clase específica.
+        """
+        reservations = UserClassReservation.objects.filter(
+            class_reserved=class_obj,
+            is_cancelled=False,
+        )
+        attendance_qs = ClassAttendance.objects.filter(class_reserved=class_obj)
+
+        attendance_count = attendance_qs.filter(attended=True).count()
+        no_show_count = attendance_qs.filter(attended=False).count()
+        waitlist_count = class_obj.waitlist_entries.filter(status='waiting').count()
+
+        attendance_rate = 0.0
+        if reservations.count() > 0:
+            attendance_rate = (attendance_count / reservations.count()) * 100
+
+        return {
+            'class_id': class_obj.id,
+            'name': class_obj.name,
+            'date': class_obj.date,
+            'instructor_id': class_obj.instructor_id,
+            'reservation_count': class_obj.reservation_count,
+            'max_students': class_obj.max_students,
+            'available_spots': max(0, class_obj.max_students - class_obj.reservation_count),
+            'attendance_count': attendance_count,
+            'attendance_rate': round(attendance_rate, 2),
+            'no_show_count': no_show_count,
+            'waitlist_count': waitlist_count,
+            'is_cancelled': class_obj.is_cancelled,
+            'cancellation_reason': class_obj.cancellation_reason,
+        }
+
+    @staticmethod
+    def send_class_reminders(class_obj=None, reminder_type='auto'):
+        """
+        Envía recordatorios de clases. Si se especifica class_obj, envía notificaciones inmediatas.
+        Caso contrario, ejecuta el proceso completo de recordatorios programados.
+        """
+        if class_obj:
+            reservations = UserClassReservation.objects.filter(
+                class_reserved=class_obj,
+                is_cancelled=False,
+            )
+            notifications = 0
+            for reservation in reservations:
+                title = 'Recordatorio de clase'
+                if reminder_type == '24h':
+                    title = 'Recordatorio: Clase mañana'
+                elif reminder_type == '1h':
+                    title = '¡Clase en 1 hora!'
+
+                message = f'Recordatorio: Tienes la clase {class_obj.name} el {class_obj.date:%d/%m/%Y %H:%M}.'
+
+                create_and_notify(
+                    recipient_id=reservation.user_id,
+                    title=title,
+                    message=message,
+                    ntype='class',
+                    payload={
+                        'class_id': class_obj.id,
+                        'reservation_id': reservation.id,
+                        'reminder_type': reminder_type,
+                    },
+                )
+                notifications += 1
+            return {'notifications_sent': notifications, 'class_id': class_obj.id, 'reminder_type': reminder_type}
+
+        return NotificationScheduler.process_all_reminders()
 
 
 

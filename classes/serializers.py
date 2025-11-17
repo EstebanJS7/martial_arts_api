@@ -320,3 +320,70 @@ class ClassWaitlistSerializer(serializers.ModelSerializer):
 class ClassWaitlistCreateSerializer(serializers.Serializer):
     """Serializer para crear una entrada en la lista de espera."""
     class_id = serializers.IntegerField()
+
+
+class RecurringClassCreateSerializer(serializers.Serializer):
+    """Serializer para crear clases recurrentes."""
+    template_id = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField(required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+    instructor = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+    date = serializers.DateTimeField(required=False)
+    max_students = serializers.IntegerField(required=False, min_value=1)
+    duration_minutes = serializers.IntegerField(required=False, min_value=15)
+    duration = serializers.DurationField(required=False)
+    class_type = serializers.ChoiceField(choices=Class.CLASS_TYPE_CHOICES, required=False)
+    difficulty_level = serializers.ChoiceField(choices=Class.DIFFICULTY_LEVEL_CHOICES, required=False)
+    location = serializers.CharField(required=False, allow_blank=True)
+    equipment_needed = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    start_date = serializers.DateTimeField()
+    end_date = serializers.DateTimeField(required=False)
+    occurrences = serializers.IntegerField(required=False, min_value=1, default=4)
+    frequency = serializers.ChoiceField(
+        choices=[
+            ('daily', 'Diario'),
+            ('weekly', 'Semanal'),
+            ('monthly', 'Mensual'),
+        ],
+        default='weekly'
+    )
+    days_of_week = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=6),
+        required=False,
+        allow_empty=True,
+        help_text="Días de la semana siguiendo el formato 0=Lunes ... 6=Domingo"
+    )
+
+    def validate(self, attrs):
+        template_id = attrs.get('template_id')
+        instructor = attrs.get('instructor')
+        name = attrs.get('name')
+
+        if not template_id:
+            if not name:
+                raise serializers.ValidationError("Debes especificar un nombre o seleccionar una plantilla.")
+            if not instructor:
+                raise serializers.ValidationError("Debes asignar un instructor.")
+
+        if attrs.get('frequency') == 'weekly' and not attrs.get('days_of_week'):
+            attrs['days_of_week'] = [attrs['start_date'].weekday()]
+
+        if attrs.get('start_date') and attrs.get('end_date') and attrs['end_date'] < attrs['start_date']:
+            raise serializers.ValidationError("La fecha de fin debe ser posterior a la fecha de inicio.")
+
+        return attrs
+
+
+class ClassReminderTriggerSerializer(serializers.Serializer):
+    """Serializer para solicitar envío de recordatorios."""
+    class_id = serializers.IntegerField(required=False)
+    reminder_type = serializers.ChoiceField(
+        choices=[
+            ('auto', 'Automático'),
+            ('24h', '24 horas antes'),
+            ('1h', '1 hora antes'),
+            ('custom', 'Personalizado'),
+        ],
+        default='auto'
+    )

@@ -29,6 +29,10 @@ from .views import (
     ClassQRCodeView,
     ClassQRDataView,
     QRCheckInView,
+    ClassRecurringCreateView,
+    ClassAttendanceHealthCheckView,
+    ClassStatisticsDetailView,
+    ClassReminderTriggerView,
 )
 
 urlpatterns = [
@@ -70,4 +74,10 @@ urlpatterns = [
     path('<int:class_id>/qr-code/', ClassQRCodeView.as_view(), name='class-qr-code'),
     path('<int:class_id>/qr-data/', ClassQRDataView.as_view(), name='class-qr-data'),
     path('qr-checkin/', QRCheckInView.as_view(), name='qr-checkin'),
+    
+    # Rutas avanzadas de gestión
+    path('manage/recurring/', ClassRecurringCreateView.as_view(), name='class-recurring-create'),
+    path('<int:class_id>/attendance/check/', ClassAttendanceHealthCheckView.as_view(), name='class-attendance-check'),
+    path('<int:class_id>/statistics/', ClassStatisticsDetailView.as_view(), name='class-statistics-detail'),
+    path('manage/reminders/', ClassReminderTriggerView.as_view(), name='class-reminders-trigger'),
 ]
