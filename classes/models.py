@@ -108,6 +108,14 @@ class Class(models.Model):
     class Meta: 
         verbose_name = "Clase"
         verbose_name_plural = "Clases"
+        indexes = [
+            models.Index(fields=['date']),  # Para consultas por fecha
+            models.Index(fields=['instructor', 'date']),  # Para consultas por instructor y fecha
+            models.Index(fields=['is_cancelled', 'date']),  # Para filtrar clases canceladas
+            models.Index(fields=['class_type', 'date']),  # Para filtrar por tipo de clase
+            models.Index(fields=['difficulty_level']),  # Para filtrar por nivel de dificultad
+            models.Index(fields=['date', 'is_cancelled']),  # Índice compuesto para consultas comunes
+        ]
 
     def __str__(self):
         return self.name
@@ -134,6 +142,12 @@ class UserClassReservation(models.Model):
         unique_together = ('user', 'class_reserved')
         verbose_name = "Reserva de clase"
         verbose_name_plural = "Reservas de clases"
+        indexes = [
+            models.Index(fields=['user', 'created_at']),  # Para consultas de reservas por usuario
+            models.Index(fields=['class_reserved', 'is_cancelled']),  # Para consultas de reservas por clase
+            models.Index(fields=['created_at']),  # Para ordenar por fecha de creación
+            models.Index(fields=['is_cancelled']),  # Para filtrar reservas canceladas
+        ]
 
     def __str__(self):
         return f'{self.user.email} - {self.class_reserved.name}'

@@ -5,8 +5,12 @@ from django.db import transaction
 from django.db.models import Count, Avg, Q, Sum, F
 from django.utils import timezone
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.cache import cache
+from django.conf import settings
 from datetime import timedelta, date
 from decimal import Decimal
+import hashlib
+import json
 
 from .models import (
     Class,
@@ -25,10 +29,23 @@ class ClassDashboardService:
     Servicio para generar estadísticas y datos del dashboard de clases.
     """
     
+    CACHE_TIMEOUT = getattr(settings, 'CACHE_TTL', 900)  # 15 minutos por defecto
+    
+    @classmethod
+    def _get_cache_key(cls, method_name, **kwargs):
+        """
+        Genera una clave de caché única basada en el método y sus parámetros.
+        """
+        # Crear un hash de los parámetros para la clave de caché
+        params_str = json.dumps(kwargs, sort_keys=True, default=str)
+        params_hash = hashlib.md5(params_str.encode()).hexdigest()
+        return f'class_dashboard_{method_name}_{params_hash}'
+    
     @classmethod
     def get_dashboard_overview(cls, period_months=1, instructor_id=None, start_date=None, end_date=None):
         """
-        Obtiene métricas principales para el dashboard de clases con filtros opcionales
+        Obtiene métricas principales para el dashboard de clases con filtros opcionales.
+        Utiliza caché para mejorar el rendimiento.
         
         Args:
             period_months: Período en meses para calcular métricas (default: 1 = mes actual)
@@ -36,6 +53,20 @@ class ClassDashboardService:
             start_date: Fecha de inicio para filtrar (opcional)
             end_date: Fecha de fin para filtrar (opcional)
         """
+        # Generar clave de caché
+        cache_key = cls._get_cache_key(
+            'dashboard_overview',
+            period_months=period_months,
+            instructor_id=instructor_id,
+            start_date=str(start_date) if start_date else None,
+            end_date=str(end_date) if end_date else None
+        )
+        
+        # Intentar obtener del caché
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            return cached_result
+        
         today = timezone.now().date()
         
         # Determinar rango de fechas basado en período
@@ -101,7 +132,7 @@ class ClassDashboardService:
         
         period_str = f"{period_start.strftime('%Y-%m')} a {period_end.strftime('%Y-%m')}" if period_months > 1 else period_start.strftime('%Y-%m')
         
-        return {
+        result = {
             'total_classes': total_classes,
             'past_classes': past_classes_count,
             'upcoming_classes': upcoming_classes_count,
@@ -112,6 +143,11 @@ class ClassDashboardService:
             'full_classes': full_classes,
             'period': period_str
         }
+        
+        # Guardar en caché
+        cache.set(cache_key, result, cls.CACHE_TIMEOUT)
+        
+        return result
     
     @classmethod
     def get_monthly_stats(cls, year, month, instructor_id=None):
@@ -155,8 +191,21 @@ class ClassDashboardService:
     @classmethod
     def get_class_trends(cls, period_months=6, instructor_id=None):
         """
-        Obtiene tendencias de clases mes a mes
+        Obtiene tendencias de clases mes a mes.
+        Utiliza caché para mejorar el rendimiento.
         """
+        # Generar clave de caché
+        cache_key = cls._get_cache_key(
+            'class_trends',
+            period_months=period_months,
+            instructor_id=instructor_id
+        )
+        
+        # Intentar obtener del caché
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            return cached_result
+        
         today = timezone.now().date()
         trends = []
         
@@ -195,7 +244,12 @@ class ClassDashboardService:
                 'attendance_count': attendance_count,
             })
         
-        return list(reversed(trends))
+        result = list(reversed(trends))
+        
+        # Guardar en caché
+        cache.set(cache_key, result, cls.CACHE_TIMEOUT)
+        
+        return result
     
     @classmethod
     def get_top_instructors(cls, period_months=1, limit=10):
@@ -337,6 +391,7 @@ class ClassDashboardService:
     def get_cancellation_analysis(cls, period_months=6, instructor_id=None, start_date=None, end_date=None):
         """
         Obtiene análisis detallado de cancelaciones de clases.
+        Utiliza caché para mejorar el rendimiento.
         
         Args:
             period_months: Período en meses para analizar (default: 6)
@@ -344,6 +399,20 @@ class ClassDashboardService:
             start_date: Fecha de inicio para filtrar (opcional)
             end_date: Fecha de fin para filtrar (opcional)
         """
+        # Generar clave de caché
+        cache_key = cls._get_cache_key(
+            'cancellation_analysis',
+            period_months=period_months,
+            instructor_id=instructor_id,
+            start_date=str(start_date) if start_date else None,
+            end_date=str(end_date) if end_date else None
+        )
+        
+        # Intentar obtener del caché
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            return cached_result
+        
         today = timezone.now().date()
         
         # Determinar rango de fechas
@@ -500,7 +569,7 @@ class ClassDashboardService:
                 'instructor_name': f"{cancel['instructor__first_name'] or ''} {cancel['instructor__last_name'] or ''}".strip(),
             })
         
-        return {
+        result = {
             'summary': {
                 'total_classes': total_classes,
                 'total_cancelled': total_cancelled,
@@ -515,6 +584,11 @@ class ClassDashboardService:
             'by_weekday': weekday_stats,
             'recent_cancellations': recent_list,
         }
+        
+        # Guardar en caché
+        cache.set(cache_key, result, cls.CACHE_TIMEOUT)
+        
+        return result
 
 
 class ClassManagementService:

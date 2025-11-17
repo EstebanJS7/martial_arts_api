@@ -48,6 +48,12 @@ class UserProfile(models.Model):
     last_updated = models.DateTimeField(auto_now=True)
     social_media_links = models.JSONField(blank=True, null=True)
     
+    class Meta:
+        indexes = [
+            models.Index(fields=['role']),  # Para filtrar usuarios por rol
+            models.Index(fields=['user', 'role']),  # Para consultas combinadas
+        ]
+    
     def __str__(self):
         return self.user.email
 

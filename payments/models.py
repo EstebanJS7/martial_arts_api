@@ -59,6 +59,15 @@ class Payment(models.Model):
         year = today.year if today.month < 12 else today.year + 1
         return date(year, next_month, current_quota.due_day)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'due_date']),  # Para consultas de pagos por usuario y fecha
+            models.Index(fields=['due_date', 'is_fully_paid']),  # Para consultas de pagos vencidos
+            models.Index(fields=['user', 'is_fully_paid']),  # Para consultas de estado de pago por usuario
+            models.Index(fields=['due_date']),  # Para ordenar por fecha de vencimiento
+            models.Index(fields=['is_paid', 'is_fully_paid']),  # Para filtrar por estado de pago
+        ]
+
     def __str__(self):
         today = date.today()
         if self.is_paid and self.is_fully_paid:
@@ -82,6 +91,12 @@ class PaymentTransaction(models.Model):
     # Información adicional para auditoría
     payment_method = models.CharField(max_length=50, blank=True, null=True)
     external_transaction_id = models.CharField(max_length=100, blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['payment', 'transaction_date']),  # Para consultas de transacciones por pago
+            models.Index(fields=['transaction_date']),  # Para ordenar por fecha de transacción
+        ]
 
     def __str__(self):
         return f"Transacción de {self.amount} en {self.transaction_date}"
