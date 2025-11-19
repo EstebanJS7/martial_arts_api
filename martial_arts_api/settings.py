@@ -238,37 +238,68 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Configuración de CORS
+# En desarrollo, permitir todos los orígenes para facilitar el desarrollo
+# En producción, usar solo orígenes específicos
+CORS_ALLOW_ALL_ORIGINS = DEBUG
 
+# Orígenes permitidos (solo se usan si CORS_ALLOW_ALL_ORIGINS = False)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://tu-dominio.com",
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    # Agregar aquí los dominios de producción cuando estén disponibles
+    # "https://tu-dominio.com",
+    # "https://www.tu-dominio.com",
 ]
 
+# Permitir orígenes con regex (útil para subdominios)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.tu-dominio\.com$",  # Ejemplo: permite cualquier subdominio
+]
+
+# Métodos HTTP permitidos
 CORS_ALLOW_METHODS = [
+    "DELETE",
     "GET",
+    "OPTIONS",
+    "PATCH",
     "POST",
     "PUT",
-    "PATCH",
-    "DELETE",
-    "OPTIONS",
 ]
 
+# Headers permitidos en las solicitudes CORS
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
-    "authorization",
+    "authorization",  # Necesario para JWT
     "content-type",
+    "content-disposition",  # Para descargas de archivos
     "dnt",
     "origin",
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+    "x-forwarded-for",  # Para proxies
+    "x-forwarded-proto",  # Para proxies
+    "cache-control",  # Para control de caché
+    "pragma",  # Para control de caché
 ]
 
+# Headers expuestos al frontend
+CORS_EXPOSE_HEADERS = [
+    "content-type",
+    "content-disposition",
+    "content-length",
+    "x-total-count",  # Útil para paginación
+]
+
+# Permitir credenciales (cookies, headers de autorización, etc.)
 CORS_ALLOW_CREDENTIALS = True
+
+# Tiempo máximo de caché para preflight requests (en segundos)
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24 horas
 
 AUTHENTICATION_BACKENDS = (
     'users.backends.EmailBackend',
@@ -304,6 +335,11 @@ CACHE_TTL = 60 * 15  # 15 minutos
 
 # URL del frontend para enlaces de restablecimiento de contraseña
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+# Si FRONTEND_URL está configurado y no está en DEBUG, agregarlo a CORS_ALLOWED_ORIGINS
+# (en DEBUG, CORS_ALLOW_ALL_ORIGINS ya permite todos los orígenes)
+if not DEBUG and FRONTEND_URL and FRONTEND_URL not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
 
 # Configuración de correo electrónico
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
