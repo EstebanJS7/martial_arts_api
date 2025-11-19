@@ -83,10 +83,14 @@ def attendance_marked(sender, instance: ClassAttendance, created: bool, **kwargs
 
 @receiver(pre_save, sender=Class)
 def class_pre_save(sender, instance: Class, **kwargs):
-    """Actualizar cancelled_at cuando se cancela una clase"""
+    """Actualizar cancelled_at cuando se cancela una clase y guardar valores anteriores"""
     if instance.pk:
         try:
             old_instance = Class.objects.get(pk=instance.pk)
+            # Guardar el valor anterior de reservation_count para usarlo en post_save
+            instance._old_reservation_count = old_instance.reservation_count
+            instance._old_is_cancelled = old_instance.is_cancelled
+            
             # Si cambió de no cancelada a cancelada
             if not old_instance.is_cancelled and instance.is_cancelled:
                 instance.cancelled_at = timezone.now()
@@ -114,13 +118,23 @@ def class_reservation_count_changed(sender, instance: Class, **kwargs):
     """
     if instance.pk:
         try:
-            old_instance = Class.objects.get(pk=instance.pk)
+            # Refrescar el objeto desde la base de datos para obtener valores actualizados
+            # (necesario cuando se usa F() para actualizar campos)
+            instance.refresh_from_db()
+            
+            # Obtener el valor anterior guardado en pre_save
+            old_count = getattr(instance, '_old_reservation_count', None)
+            old_is_cancelled = getattr(instance, '_old_is_cancelled', False)
+            new_count = instance.reservation_count
+            
             # Si el número de reservas disminuyó (se canceló una reserva)
-            if old_instance.reservation_count > instance.reservation_count:
-                _notify_waitlist_availability(instance)
+            # Verificar que ambos valores sean enteros antes de comparar
+            if old_count is not None and isinstance(old_count, int) and isinstance(new_count, int):
+                if old_count > new_count:
+                    _notify_waitlist_availability(instance)
             
             # Si la clase fue cancelada, notificar a todos los usuarios con reserva
-            if not old_instance.is_cancelled and instance.is_cancelled:
+            if not old_is_cancelled and instance.is_cancelled:
                 cancellation_reason = getattr(instance, '_cancellation_reason', instance.cancellation_reason or '')
                 NotificationScheduler.send_class_cancellation_notifications(instance, cancellation_reason)
         except Class.DoesNotExist:

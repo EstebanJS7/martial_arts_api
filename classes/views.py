@@ -16,6 +16,7 @@ from .models import Class, UserClassReservation, ClassAttendance, ClassTemplate,
 from .services import ClassDashboardService, ClassManagementService
 from .qr_utils import generate_qr_code_image, validate_qr_token_and_checkin
 from .export_service import ClassExportService
+from .validators import ClassValidator
 from .serializers import (
     ClassSerializer, 
     UserClassReservationSerializer, 
@@ -237,9 +238,11 @@ class UserClassReservationCreateView(generics.CreateAPIView):
         if not validation_result['valid']:
             raise ValidationError(validation_result['message'])
             
-        # Incrementar el contador de reservas y guardar
-        class_obj.reservation_count = F('reservation_count') + 1
-        class_obj.save()
+        # Incrementar el contador de reservas usando update para evitar problemas con F()
+        Class.objects.filter(pk=class_obj.pk).update(reservation_count=F('reservation_count') + 1)
+        
+        # Refrescar el objeto desde la base de datos para obtener el valor actualizado
+        class_obj.refresh_from_db()
         
         # Guardar la reserva
         serializer.save(user=self.request.user)

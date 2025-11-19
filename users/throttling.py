@@ -37,7 +37,8 @@ class LoginRateThrottle(SimpleRateThrottle):
         """
         Método llamado cuando el throttle permite la solicitud.
         """
-        logger.debug(f"Login request allowed for IP: {self.get_ident(self.request)}")
+        # throttle_success() no tiene acceso directo al request
+        # El logging se puede hacer en allow_request() si es necesario
         return super().throttle_success()
 
 

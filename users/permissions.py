@@ -3,11 +3,21 @@ from rest_framework import permissions
 class IsAdminUser(permissions.BasePermission):
     """
     Permiso personalizado para permitir el acceso solo a administradores.
+    Incluye superusuarios y usuarios con role='admin' en su perfil.
     """
     def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # Los superusuarios siempre tienen acceso
+        if request.user.is_superuser or request.user.is_staff:
+            return True
+        
+        # Verificar el rol en el perfil
         try:
-            return request.user and request.user.userprofile.role == 'admin'
+            return request.user.userprofile.role == 'admin'
         except AttributeError:
+            # Si no tiene perfil, no es admin
             return False
 
 class IsInstructorUser(permissions.BasePermission):
