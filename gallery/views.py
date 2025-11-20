@@ -1,8 +1,8 @@
-from rest_framework import generics, status
+from rest_framework import generics, status, permissions
 from .models import Gallery, GalleryItem
 from .serializers import GallerySerializer, GalleryItemSerializer
 from users.permissions import IsAdminUser, IsAdminOrInstructor
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, AllowAny
 from rest_framework.response import Response
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
@@ -28,7 +28,7 @@ class GalleryListCreateView(generics.ListCreateAPIView):
         Instantiates and returns the list of permissions that this view requires.
         """
         if self.request.method == 'GET':
-            permission_classes = [IsAuthenticatedOrReadOnly]
+            permission_classes = [AllowAny]  # Permitir acceso público para lectura
         else:  # POST (create)
             permission_classes = [IsAdminOrInstructor]
         return [permission() for permission in permission_classes]
@@ -47,7 +47,7 @@ class GalleryDetailView(generics.RetrieveUpdateDestroyAPIView):
         Instantiates and returns the list of permissions that this view requires.
         """
         if self.request.method == 'GET':
-            permission_classes = [IsAuthenticatedOrReadOnly]
+            permission_classes = [AllowAny]  # Permitir acceso público para lectura
         else:  # PUT, PATCH, DELETE
             permission_classes = [IsAdminOrInstructor]
         return [permission() for permission in permission_classes]
@@ -63,7 +63,7 @@ class GalleryItemListCreateView(generics.ListCreateAPIView):
         Instantiates and returns the list of permissions that this view requires.
         """
         if self.request.method == 'GET':
-            permission_classes = [IsAuthenticatedOrReadOnly]
+            permission_classes = [AllowAny]  # Permitir acceso público para lectura
         else:  # POST (create)
             permission_classes = [IsAdminOrInstructor]
         return [permission() for permission in permission_classes]
@@ -78,7 +78,7 @@ class GalleryItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         Instantiates and returns the list of permissions that this view requires.
         """
         if self.request.method == 'GET':
-            permission_classes = [IsAuthenticatedOrReadOnly]
+            permission_classes = [AllowAny]  # Permitir acceso público para lectura
         else:  # PUT, PATCH, DELETE
             permission_classes = [IsAdminOrInstructor]
         return [permission() for permission in permission_classes]

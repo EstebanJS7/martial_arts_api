@@ -31,7 +31,7 @@ from .serializers import (
     ClassReminderTriggerSerializer,
 )
 from users.permissions import IsAdminUser, IsInstructorUser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny, AllowAny
 
 # Configurar el logger
 logger = logging.getLogger(__name__)
@@ -303,10 +303,11 @@ class UserClassReservationUpdateView(generics.UpdateAPIView):
 
 class UpcomingClassesView(APIView):
     """
-    Vista para obtener las próximas clases programadas para el usuario autenticado.
+    Vista para obtener las próximas clases programadas.
     Muestra clases de los próximos 30 días con información completa del instructor.
+    Permite acceso público para la landing page.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get(self, request):
         # Obtener la fecha actual
