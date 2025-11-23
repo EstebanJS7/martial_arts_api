@@ -32,6 +32,14 @@ class GalleryListCreateView(generics.ListCreateAPIView):
         else:  # POST (create)
             permission_classes = [IsAdminOrInstructor]
         return [permission() for permission in permission_classes]
+    
+    def get_throttles(self):
+        """
+        Deshabilitar throttling para GET requests (endpoints públicos).
+        """
+        if self.request.method == 'GET':
+            return []  # Sin throttling para lectura pública
+        return super().get_throttles()
 
 class GalleryDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = GallerySerializer
@@ -51,6 +59,14 @@ class GalleryDetailView(generics.RetrieveUpdateDestroyAPIView):
         else:  # PUT, PATCH, DELETE
             permission_classes = [IsAdminOrInstructor]
         return [permission() for permission in permission_classes]
+    
+    def get_throttles(self):
+        """
+        Deshabilitar throttling para GET requests (endpoints públicos).
+        """
+        if self.request.method == 'GET':
+            return []  # Sin throttling para lectura pública
+        return super().get_throttles()
 
 # Vista para gestionar elementos multimedia
 class GalleryItemListCreateView(generics.ListCreateAPIView):
@@ -67,6 +83,14 @@ class GalleryItemListCreateView(generics.ListCreateAPIView):
         else:  # POST (create)
             permission_classes = [IsAdminOrInstructor]
         return [permission() for permission in permission_classes]
+    
+    def get_throttles(self):
+        """
+        Deshabilitar throttling para GET requests (endpoints públicos).
+        """
+        if self.request.method == 'GET':
+            return []  # Sin throttling para lectura pública
+        return super().get_throttles()
 
 class GalleryItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = GalleryItem.objects.all()
@@ -82,3 +106,11 @@ class GalleryItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         else:  # PUT, PATCH, DELETE
             permission_classes = [IsAdminOrInstructor]
         return [permission() for permission in permission_classes]
+    
+    def get_throttles(self):
+        """
+        Deshabilitar throttling para GET requests (endpoints públicos).
+        """
+        if self.request.method == 'GET':
+            return []  # Sin throttling para lectura pública
+        return super().get_throttles()

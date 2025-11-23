@@ -308,6 +308,7 @@ class UpcomingClassesView(APIView):
     Permite acceso público para la landing page.
     """
     permission_classes = [AllowAny]
+    throttle_classes = []  # Deshabilitar throttling para endpoints públicos
     
     def get(self, request):
         # Obtener la fecha actual

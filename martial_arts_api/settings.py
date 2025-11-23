@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'resources',
     'gallery',
     'performance',
+    'contact',
     'rest_framework_simplejwt.token_blacklist',
     'django_filters',
     'drf_yasg',

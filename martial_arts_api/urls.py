@@ -51,6 +51,7 @@ urlpatterns = [
     path('api/resources/', include('resources.urls')),
     path('api/gallery/', include('gallery.urls')),
     path('api/performance/', include('performance.urls')),
+    path('api/contact/', include('contact.urls')),
     path('api/', include('notifications.urls')),
     path('api/dashboard/', DashboardView.as_view(), name='dashboard'),
     path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),

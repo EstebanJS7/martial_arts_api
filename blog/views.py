@@ -26,6 +26,14 @@ class BlogPostListView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         # Asigna el usuario autenticado como autor del BlogPost
         serializer.save(author=self.request.user)
+    
+    def get_throttles(self):
+        """
+        Deshabilitar throttling para GET requests (endpoints públicos).
+        """
+        if self.request.method == 'GET':
+            return []  # Sin throttling para lectura pública
+        return super().get_throttles()
 
 @method_decorator(cache_page(settings.CACHE_TTL), name='retrieve')
 class BlogPostDetailView(generics.RetrieveUpdateDestroyAPIView):

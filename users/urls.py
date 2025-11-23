@@ -5,7 +5,7 @@ from .views import LoginView
 from .views import LogoutView
 from .views import UserListView
 from .views import PasswordResetRequestView, PasswordResetConfirmView
-from .views import ChangePasswordView, UpdateUserRoleView, InstructorStudentsView, VerifyTokenView, UserStatsView, ActivateUserView, DeactivateUserView, DeleteUserView
+from .views import ChangePasswordView, UpdateUserRoleView, InstructorStudentsView, VerifyTokenView, UserStatsView, ActivateUserView, DeactivateUserView, DeleteUserView, PublicInstructorListView, PublicUserStatsView
 
 urlpatterns = [
     path('profile/', views.UserProfileView.as_view(), name='user-profile'),
@@ -23,4 +23,6 @@ urlpatterns = [
     path('admin/delete/<int:user_id>/', DeleteUserView.as_view(), name='delete-user'),
     path('instructor/students/', InstructorStudentsView.as_view(), name='instructor-students'),
     path('verify-token/', VerifyTokenView.as_view(), name='verify-token'),
+    path('public/instructors/', PublicInstructorListView.as_view(), name='public-instructors'),
+    path('public/stats/', PublicUserStatsView.as_view(), name='public-user-stats'),
 ]

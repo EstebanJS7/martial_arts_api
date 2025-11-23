@@ -14,7 +14,7 @@ from .throttling import (
     PasswordResetConfirmRateThrottle,
     BruteForceProtectionThrottle,
 )
-from .serializers import UserSerializer 
+from .serializers import UserSerializer, PublicInstructorSerializer 
 from .permissions import IsAdminUser, IsAdminOrInstructor
 from .forms import EmailAuthenticationForm
 from payments.models import Payment
@@ -26,6 +26,9 @@ from django.utils.encoding import force_bytes, force_str
 from django.core.mail import send_mail
 from django.conf import settings
 from rest_framework import status
+from django.utils import timezone
+from classes.models import Class
+from blog.models import BlogPost
 
 # Create your views here.
 
@@ -419,6 +422,55 @@ class UserStatsView(APIView):
                 {'success': False, 'message': 'Error al obtener estadísticas'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class PublicInstructorListView(generics.ListAPIView):
+    """
+    Lista pública de instructores para la landing page.
+    """
+    serializer_class = PublicInstructorSerializer
+    permission_classes = [AllowAny]
+    throttle_classes = []  # Deshabilitar throttling para endpoints públicos
+
+    def get_queryset(self):
+        limit = self.request.query_params.get('limit')
+        queryset = UserProfile.objects.filter(role='instructor').select_related('user').order_by('user__first_name')
+        if limit:
+            try:
+                limit_value = int(limit)
+                if limit_value > 0:
+                    queryset = queryset[:limit_value]
+            except (ValueError, TypeError):
+                pass
+        return queryset
+
+
+class PublicUserStatsView(APIView):
+    """
+    Estadísticas públicas resumidas para la landing page.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = []  # Deshabilitar throttling para endpoints públicos
+
+    def get(self, request):
+        current_time = timezone.now()
+        students = UserProfile.objects.filter(role='student').count()
+        instructors = UserProfile.objects.filter(role='instructor').count()
+        total_classes = Class.objects.filter(is_cancelled=False).count()
+        upcoming_classes = Class.objects.filter(is_cancelled=False, date__gte=current_time).count()
+        blog_posts = BlogPost.objects.count()
+
+        return Response(
+            {
+                'students': students,
+                'instructors': instructors,
+                'classes_total': total_classes,
+                'upcoming_classes': upcoming_classes,
+                'blog_posts': blog_posts,
+            },
+            status=status.HTTP_200_OK
+        )
+
 
 class ActivateUserView(APIView):
     """
