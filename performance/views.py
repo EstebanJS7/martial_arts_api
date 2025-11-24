@@ -137,10 +137,46 @@ class UserPerformanceStatsView(APIView):
     def get(self, request):
         user = request.user
         
-        # Obtener el nivel de habilidad del usuario
+        # Calcular el nivel de habilidad basándose en el cinturón del usuario
+        skill_level = "Principiante"
         try:
-            skill_level = user.userprofile.skill_level
-        except:
+            user_profile = user.userprofile
+            belt_rank_name = user_profile.belt_rank
+            
+            if belt_rank_name:
+                # Buscar el cinturón en el modelo BeltRank
+                try:
+                    from .models import BeltRank
+                    belt_rank = BeltRank.objects.get(name=belt_rank_name, is_active=True)
+                    
+                    # Determinar nivel de habilidad basado en la categoría y orden del cinturón
+                    if belt_rank.category == 'Dan':
+                        # Para cinturones Dan, usar el número del Dan
+                        if '1°' in belt_rank_name or '1er' in belt_rank_name or '1' in belt_rank_name:
+                            skill_level = "Avanzado"
+                        elif '2°' in belt_rank_name or '2do' in belt_rank_name or '2' in belt_rank_name:
+                            skill_level = "Experto"
+                        elif '3°' in belt_rank_name or '3er' in belt_rank_name or '3' in belt_rank_name:
+                            skill_level = "Maestro"
+                        elif belt_rank.order_number >= 16:  # 4° Dan o superior
+                            skill_level = "Gran Maestro"
+                        else:
+                            skill_level = "Avanzado"
+                    elif belt_rank.category == 'Kyu B':
+                        # Cinturones Kyu B son intermedios
+                        skill_level = "Intermedio"
+                    else:
+                        # Cinturones Kyu A son principiantes
+                        skill_level = "Principiante"
+                except BeltRank.DoesNotExist:
+                    # Si el cinturón no existe en el sistema, usar el nombre del cinturón como nivel
+                    if 'Negro' in belt_rank_name or 'Dan' in belt_rank_name:
+                        skill_level = "Avanzado"
+                    elif any(color in belt_rank_name for color in ['Azul', 'Marrón', 'Rojo']):
+                        skill_level = "Intermedio"
+                    else:
+                        skill_level = "Principiante"
+        except Exception:
             skill_level = "Principiante"
         
         # Obtener estadísticas de asistencia
