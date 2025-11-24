@@ -83,7 +83,9 @@ class ExamSession(models.Model):
         on_delete=models.PROTECT,
         related_name='exam_sessions',
         verbose_name='Cinturón a Evaluar',
-        help_text='Cinturón que se evaluará en esta sesión de examen'
+        help_text='Cinturón que se evaluará en esta sesión de examen',
+        null=True,
+        blank=True,
     )
     belt_level = models.CharField(max_length=50, blank=True, null=True)  # Mantener para compatibilidad
     exam_date = models.DateField()

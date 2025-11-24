@@ -14,9 +14,17 @@ from payments.models import Payment, QuotaConfig, PaymentTransaction
 from blog.models import BlogPost, Category, Tag, Comment, Rating
 from resources.models import Resource, ResourceTag, ResourceType, ResourceCategory, ResourceLevel
 from gallery.models import Gallery, GalleryItem
+from contact.models import Academy
 from performance.models import (
-    Discipline, EvaluationParameter, ExamSession, ExamResult, 
-    ExamResultParameterScore, Event, EventCategory, EventParticipation
+    Discipline,
+    EvaluationParameter,
+    ExamSession,
+    ExamResult,
+    ExamResultParameterScore,
+    Event,
+    EventCategory,
+    EventParticipation,
+    BeltRank,
 )
 
 User = get_user_model()
@@ -45,10 +53,29 @@ DOJOS = [
     'Dojo Principal', 'Dojo Secundario', 'Dojo Elite', 'Dojo Tradicional'
 ]
 
-BELT_RANKS = [
-    'Blanco', 'Amarillo', 'Naranja', 'Verde', 'Azul', 'Marrón', 'Negro 1er Dan',
-    'Negro 2do Dan', 'Negro 3er Dan', 'Negro 4to Dan'
+BELT_RANK_DEFINITIONS = [
+    {"name": "Blanco", "category": "Kyu A"},
+    {"name": "Naranja", "category": "Kyu A"},
+    {"name": "Amarillo", "category": "Kyu A"},
+    {"name": "Camuflado", "category": "Kyu A"},
+    {"name": "Verde", "category": "Kyu A"},
+    {"name": "Lila", "category": "Kyu A"},
+    {"name": "Azul", "category": "Kyu B"},
+    {"name": "Marrón", "category": "Kyu B"},
+    {"name": "Rojo", "category": "Kyu B"},
+    {"name": "Rojo punta negra", "category": "Kyu B"},
+    {"name": "Medio negro", "category": "Kyu B"},
+    {"name": "Negro 1° Dan", "category": "Dan"},
+    {"name": "Negro 2° Dan", "category": "Dan"},
+    {"name": "Negro 3° Dan", "category": "Dan"},
+    {"name": "Negro 4° Dan", "category": "Dan"},
+    {"name": "Negro 5° Dan", "category": "Dan"},
+    {"name": "Negro 6° Dan", "category": "Dan"},
+    {"name": "Negro 7° Dan", "category": "Dan"},
+    {"name": "Negro 8° Dan", "category": "Dan"},
+    {"name": "Negro 9° Dan", "category": "Dan"},
 ]
+BELT_RANK_NAMES = [belt["name"] for belt in BELT_RANK_DEFINITIONS]
 
 CLASS_NAMES = [
     'Karate Básico', 'Karate Avanzado', 'Kata Tradicional', 'Kumite Competitivo',
@@ -87,6 +114,82 @@ EVENT_CATEGORIES = [
 EVALUATION_PARAMETERS = [
     'Técnica', 'Velocidad', 'Fuerza', 'Precisión', 'Resistencia',
     'Flexibilidad', 'Concentración', 'Actitud', 'Disciplina', 'Respeto'
+]
+
+# Academias en Paraguay con ubicaciones reales
+ACADEMIES_PARAGUAY = [
+    {
+        "name": "Academia Central - Asunción",
+        "address": "Av. Mariscal López 1234, Asunción, Paraguay",
+        "phone": "+595 21 123-4567",
+        "email": "central@taekwondo.com.py",
+        "schedule": "Lun-Vie: 7:00 AM - 9:00 PM, Sáb: 8:00 AM - 6:00 PM",
+        "latitude": -25.2637,
+        "longitude": -57.5759
+    },
+    {
+        "name": "Academia Norte - San Lorenzo",
+        "address": "Av. Mariscal Estigarribia 567, San Lorenzo, Paraguay",
+        "phone": "+595 21 234-5678",
+        "email": "norte@taekwondo.com.py",
+        "schedule": "Lun-Vie: 8:00 AM - 8:00 PM, Sáb: 9:00 AM - 5:00 PM",
+        "latitude": -25.3397,
+        "longitude": -57.5078
+    },
+    {
+        "name": "Academia Sur - Fernando de la Mora",
+        "address": "Av. Defensores del Chaco 890, Fernando de la Mora, Paraguay",
+        "phone": "+595 21 345-6789",
+        "email": "sur@taekwondo.com.py",
+        "schedule": "Lun-Vie: 7:30 AM - 9:30 PM, Sáb: 8:00 AM - 6:00 PM",
+        "latitude": -25.3194,
+        "longitude": -57.5217
+    },
+    {
+        "name": "Academia Este - Ciudad del Este",
+        "address": "Av. Adrián Jara 234, Ciudad del Este, Paraguay",
+        "phone": "+595 61 456-7890",
+        "email": "este@taekwondo.com.py",
+        "schedule": "Lun-Vie: 8:00 AM - 8:00 PM, Sáb: 9:00 AM - 5:00 PM",
+        "latitude": -25.5097,
+        "longitude": -54.6115
+    },
+    {
+        "name": "Academia Oeste - Luque",
+        "address": "Av. Aviadores del Chaco 456, Luque, Paraguay",
+        "phone": "+595 21 567-8901",
+        "email": "luque@taekwondo.com.py",
+        "schedule": "Lun-Vie: 7:00 AM - 9:00 PM, Sáb: 8:00 AM - 6:00 PM",
+        "latitude": -25.2647,
+        "longitude": -57.4864
+    },
+    {
+        "name": "Academia Central - Encarnación",
+        "address": "Av. Mariscal López 789, Encarnación, Paraguay",
+        "phone": "+595 71 678-9012",
+        "email": "encarnacion@taekwondo.com.py",
+        "schedule": "Lun-Vie: 8:00 AM - 8:00 PM, Sáb: 9:00 AM - 5:00 PM",
+        "latitude": -27.3306,
+        "longitude": -55.8667
+    },
+    {
+        "name": "Academia Alto Paraná - Hernandarias",
+        "address": "Av. Principal 123, Hernandarias, Paraguay",
+        "phone": "+595 61 789-0123",
+        "email": "hernandarias@taekwondo.com.py",
+        "schedule": "Lun-Vie: 7:30 AM - 9:00 PM, Sáb: 8:00 AM - 6:00 PM",
+        "latitude": -25.3844,
+        "longitude": -54.7000
+    },
+    {
+        "name": "Academia Central - Villarrica",
+        "address": "Av. Mariscal López 345, Villarrica, Paraguay",
+        "phone": "+595 541 890-1234",
+        "email": "villarrica@taekwondo.com.py",
+        "schedule": "Lun-Vie: 8:00 AM - 8:00 PM, Sáb: 9:00 AM - 5:00 PM",
+        "latitude": -25.7500,
+        "longitude": -56.4333
+    }
 ]
 
 
@@ -155,13 +258,16 @@ class Command(BaseCommand):
         
         self.stdout.write(self.style.SUCCESS('Iniciando población de datos de prueba...'))
         
-        # Configurar cuota
+        # Configurar catálogo base
         quota_config = self.create_quota_config()
+        belt_ranks = self.create_belt_ranks()
+        academies = self.create_academies()
         
         # Crear usuarios
         users_data = self.create_users(
             options['users'],
-            options['instructors']
+            options['instructors'],
+            belt_ranks
         )
         
         # Crear clases
@@ -197,7 +303,8 @@ class Command(BaseCommand):
         self.create_exams(
             options['exams'],
             users_data['students'],
-            users_data['instructors']
+            users_data['instructors'],
+            belt_ranks
         )
         
         self.stdout.write(self.style.SUCCESS('\n¡Datos de prueba creados exitosamente!'))
@@ -221,6 +328,7 @@ class Command(BaseCommand):
         ExamResultParameterScore.objects.all().delete()
         ExamResult.objects.all().delete()
         ExamSession.objects.all().delete()
+        Academy.objects.all().delete()
         UserProfile.objects.exclude(role='admin').delete()
         User.objects.exclude(is_superuser=True).delete()
 
@@ -237,11 +345,88 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'✓ Configuración de cuota creada: ${quota.amount}'))
         return quota
 
-    def create_users(self, num_students, num_instructors):
+    def create_belt_ranks(self):
+        """Crea o actualiza los cinturones disponibles"""
+        belt_objects = []
+        for index, belt in enumerate(BELT_RANK_DEFINITIONS, start=1):
+            obj, created = BeltRank.objects.get_or_create(
+                name=belt["name"],
+                defaults={
+                    "order_number": index,
+                    "category": belt["category"],
+                    "is_active": True,
+                }
+            )
+            if not created:
+                updated_fields = []
+                if obj.order_number != index:
+                    obj.order_number = index
+                    updated_fields.append("order_number")
+                if obj.category != belt["category"]:
+                    obj.category = belt["category"]
+                    updated_fields.append("category")
+                if not obj.is_active:
+                    obj.is_active = True
+                    updated_fields.append("is_active")
+                if updated_fields:
+                    obj.save(update_fields=updated_fields)
+            belt_objects.append(obj)
+        self.stdout.write(self.style.SUCCESS(f'✓ {len(belt_objects)} cinturones configurados'))
+        return belt_objects
+
+    def create_academies(self):
+        """Crea o actualiza las academias en Paraguay"""
+        academy_objects = []
+        for academy_data in ACADEMIES_PARAGUAY:
+            obj, created = Academy.objects.get_or_create(
+                name=academy_data["name"],
+                defaults={
+                    "address": academy_data["address"],
+                    "phone": academy_data["phone"],
+                    "email": academy_data["email"],
+                    "schedule": academy_data["schedule"],
+                    "latitude": Decimal(str(academy_data["latitude"])),
+                    "longitude": Decimal(str(academy_data["longitude"])),
+                    "is_active": True,
+                }
+            )
+            if not created:
+                # Actualizar datos si la academia ya existe
+                updated_fields = []
+                if obj.address != academy_data["address"]:
+                    obj.address = academy_data["address"]
+                    updated_fields.append("address")
+                if obj.phone != academy_data["phone"]:
+                    obj.phone = academy_data["phone"]
+                    updated_fields.append("phone")
+                if obj.email != academy_data["email"]:
+                    obj.email = academy_data["email"]
+                    updated_fields.append("email")
+                if obj.schedule != academy_data["schedule"]:
+                    obj.schedule = academy_data["schedule"]
+                    updated_fields.append("schedule")
+                if float(obj.latitude) != academy_data["latitude"]:
+                    obj.latitude = Decimal(str(academy_data["latitude"]))
+                    updated_fields.append("latitude")
+                if float(obj.longitude) != academy_data["longitude"]:
+                    obj.longitude = Decimal(str(academy_data["longitude"]))
+                    updated_fields.append("longitude")
+                if not obj.is_active:
+                    obj.is_active = True
+                    updated_fields.append("is_active")
+                if updated_fields:
+                    obj.save(update_fields=updated_fields)
+            academy_objects.append(obj)
+        self.stdout.write(self.style.SUCCESS(f'✓ {len(academy_objects)} academias configuradas en Paraguay'))
+        return academy_objects
+
+    def create_users(self, num_students, num_instructors, belt_ranks):
         """Crea usuarios de prueba"""
         admins = []
         instructors = []
         students = []
+        belt_names = [belt.name for belt in belt_ranks] or ['Blanco']
+        high_belt_names = [name for name in belt_names if name.lower().startswith('negro')] or belt_names
         
         # Crear admin si no existe
         admin, created = User.objects.get_or_create(
@@ -260,7 +445,7 @@ class Command(BaseCommand):
                 user=admin,
                 defaults={
                     'role': 'admin',
-                    'belt_rank': 'Negro 5to Dan',
+                    'belt_rank': 'Negro 5° Dan',
                     'dojo': DOJOS[0]
                 }
             )
@@ -271,7 +456,7 @@ class Command(BaseCommand):
                 user=admin,
                 defaults={
                     'role': 'admin',
-                    'belt_rank': 'Negro 5to Dan',
+                    'belt_rank': 'Negro 5° Dan',
                     'dojo': DOJOS[0]
                 }
             )
@@ -298,7 +483,7 @@ class Command(BaseCommand):
                     user=user,
                     defaults={
                         'role': 'instructor',
-                        'belt_rank': random.choice(['Negro 1er Dan', 'Negro 2do Dan', 'Negro 3er Dan']),
+                        'belt_rank': random.choice(high_belt_names),
                         'dojo': random.choice(DOJOS),
                         'bio': f'Instructor con {random.randint(5, 20)} años de experiencia',
                         'age': random.randint(25, 50),
@@ -312,7 +497,7 @@ class Command(BaseCommand):
                     user=user,
                     defaults={
                         'role': 'instructor',
-                        'belt_rank': random.choice(['Negro 1er Dan', 'Negro 2do Dan', 'Negro 3er Dan']),
+                        'belt_rank': random.choice(high_belt_names),
                         'dojo': random.choice(DOJOS)
                     }
                 )
@@ -346,7 +531,7 @@ class Command(BaseCommand):
                     user=user,
                     defaults={
                         'role': 'student',
-                        'belt_rank': random.choice(BELT_RANKS),
+                        'belt_rank': random.choice(belt_names),
                         'dojo': random.choice(DOJOS),
                         'enrollment_date': enrollment_date,
                         'age': random.randint(8, 60),
@@ -362,7 +547,7 @@ class Command(BaseCommand):
                     user=user,
                     defaults={
                         'role': 'student',
-                        'belt_rank': random.choice(BELT_RANKS),
+                        'belt_rank': random.choice(belt_names),
                         'dojo': random.choice(DOJOS)
                     }
                 )
@@ -645,7 +830,7 @@ class Command(BaseCommand):
         
         self.stdout.write(self.style.SUCCESS(f'✓ {num_events} eventos creados'))
 
-    def create_exams(self, num_exams, students, instructors):
+    def create_exams(self, num_exams, students, instructors, belt_ranks):
         """Crea sesiones de examen"""
         # Asegurar que haya al menos un instructor
         if not instructors:
@@ -665,14 +850,16 @@ class Command(BaseCommand):
             )
             eval_params.append(param)
         
-        belt_levels = ['Blanco', 'Amarillo', 'Naranja', 'Verde', 'Azul', 'Marrón', 'Negro 1er Dan']
+        belt_levels = belt_ranks or []
         
         for i in range(num_exams):
             exam_date = date.today() + timedelta(days=random.randint(-180, 180))
             created_by = random.choice(instructors)  # Ya verificamos que instructors no está vacío
             
+            belt_rank = random.choice(belt_levels) if belt_levels else None
             exam_session = ExamSession.objects.create(
-                belt_level=random.choice(belt_levels),
+                belt_rank=belt_rank,
+                belt_level=belt_rank.name if belt_rank else None,
                 exam_date=exam_date,
                 created_by=created_by
             )
