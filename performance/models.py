@@ -19,6 +19,54 @@ class EvaluationParameter(models.Model):
     def __str__(self):
         return self.name
 
+# Modelo para gestionar los cinturones
+class BeltRank(models.Model):
+    CATEGORY_CHOICES = [
+        ('Kyu A', 'Kyu A'),
+        ('Kyu B', 'Kyu B'),
+        ('Dan', 'Dan'),
+    ]
+    
+    name = models.CharField(max_length=100, unique=True, verbose_name='Nombre del Cinturón')
+    order_number = models.IntegerField(unique=True, verbose_name='Número de Orden', 
+                                       help_text='Número único que indica el orden del cinturón (1=Blanco, 2=Naranja, etc.)')
+    category = models.CharField(max_length=10, choices=CATEGORY_CHOICES, verbose_name='Categoría')
+    is_active = models.BooleanField(default=True, verbose_name='Activo')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Fecha de Creación')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Fecha de Actualización')
+
+    class Meta:
+        ordering = ['order_number']
+        verbose_name = 'Cinturón'
+        verbose_name_plural = 'Cinturones'
+        indexes = [
+            models.Index(fields=['order_number']),
+            models.Index(fields=['category']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_category_display()})"
+
+    def get_next_belt(self):
+        """Retorna el siguiente cinturón en orden"""
+        try:
+            return BeltRank.objects.filter(
+                order_number__gt=self.order_number,
+                is_active=True
+            ).order_by('order_number').first()
+        except BeltRank.DoesNotExist:
+            return None
+
+    def get_previous_belt(self):
+        """Retorna el cinturón anterior en orden"""
+        try:
+            return BeltRank.objects.filter(
+                order_number__lt=self.order_number,
+                is_active=True
+            ).order_by('-order_number').first()
+        except BeltRank.DoesNotExist:
+            return None
+
 # --- Flujo de Exámenes ---
 
 class ExamSession(models.Model):
@@ -30,7 +78,14 @@ class ExamSession(models.Model):
       - El instructor o administrador que organiza la sesión.
       - Los parámetros de evaluación a calificar.
     """
-    belt_level = models.CharField(max_length=50)  # Ej: "Black Belt"
+    belt_rank = models.ForeignKey(
+        'BeltRank',
+        on_delete=models.PROTECT,
+        related_name='exam_sessions',
+        verbose_name='Cinturón a Evaluar',
+        help_text='Cinturón que se evaluará en esta sesión de examen'
+    )
+    belt_level = models.CharField(max_length=50, blank=True, null=True)  # Mantener para compatibilidad
     exam_date = models.DateField()
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
@@ -55,7 +110,13 @@ class ExamSession(models.Model):
         verbose_name_plural = "Exam Sessions"
 
     def __str__(self):
-        return f"Exam Session for {self.belt_level} on {self.exam_date}"
+        return f"Exam Session for {self.belt_rank.name} on {self.exam_date}"
+
+    def save(self, *args, **kwargs):
+        # Mantener compatibilidad con belt_level
+        if self.belt_rank and not self.belt_level:
+            self.belt_level = self.belt_rank.name
+        super().save(*args, **kwargs)
 
 class ExamResult(models.Model):
     """
@@ -65,6 +126,8 @@ class ExamResult(models.Model):
     exam_session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name='exam_results')
     participant = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='exam_results')
     graded = models.BooleanField(default=False)  # Indica si ya fue calificado
+    passed = models.BooleanField(default=False, verbose_name='Aprobado', 
+                                 help_text='Indica si el participante aprobó el examen')
 
     class Meta:
         unique_together = ('exam_session', 'participant')
@@ -73,6 +136,86 @@ class ExamResult(models.Model):
 
     def __str__(self):
         return f"Result for {self.participant.email} in {self.exam_session}"
+
+    def save(self, *args, **kwargs):
+        """Actualiza el cinturón del usuario si aprueba el examen"""
+        is_new = self.pk is None
+        old_passed = None
+        if not is_new:
+            try:
+                old_instance = ExamResult.objects.get(pk=self.pk)
+                old_passed = old_instance.passed
+            except ExamResult.DoesNotExist:
+                pass
+        
+        super().save(*args, **kwargs)
+        
+        # Si el examen fue calificado y aprobado, y antes no estaba aprobado, actualizar el cinturón
+        if self.graded and self.passed and (is_new or (old_passed is not None and not old_passed)):
+            self.update_user_belt()
+
+    def update_user_belt(self):
+        """Actualiza el cinturón del usuario al cinturón del examen aprobado"""
+        try:
+            user_profile = self.participant.userprofile
+            new_belt = self.exam_session.belt_rank
+            
+            # Actualizar el cinturón del usuario
+            # Por ahora actualizamos el campo belt_rank como string
+            # Más adelante se puede cambiar a ForeignKey
+            user_profile.belt_rank = new_belt.name
+            user_profile.save()
+            
+            # Log para debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Usuario {self.participant.email} actualizado a cinturón {new_belt.name}")
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error actualizando cinturón para {self.participant.email}: {e}")
+
+    @staticmethod
+    def can_take_exam(user, exam_session):
+        """
+        Valida si un usuario puede tomar un examen para un cinturón específico.
+        Solo puede tomar examen para el siguiente cinturón después del suyo actual.
+        """
+        try:
+            user_profile = user.userprofile
+            current_belt_name = user_profile.belt_rank
+            
+            # Si no tiene cinturón asignado, solo puede tomar el primer cinturón
+            if not current_belt_name or current_belt_name.strip() == '':
+                first_belt = BeltRank.objects.filter(is_active=True).order_by('order_number').first()
+                if first_belt and first_belt.id == exam_session.belt_rank.id:
+                    return True
+                return False
+            
+            # Buscar el cinturón actual del usuario
+            try:
+                current_belt = BeltRank.objects.get(name=current_belt_name, is_active=True)
+            except BeltRank.DoesNotExist:
+                # Si el cinturón actual no existe en el sistema, permitir el examen
+                # (para compatibilidad con datos antiguos)
+                return True
+            
+            # El siguiente cinturón debe ser el del examen
+            next_belt = current_belt.get_next_belt()
+            
+            if next_belt and next_belt.id == exam_session.belt_rank.id:
+                return True
+            
+            # Si el usuario ya tiene un cinturón igual o superior, no puede tomar el examen
+            if current_belt.order_number >= exam_session.belt_rank.order_number:
+                return False
+            
+            return False
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error validando si usuario puede tomar examen: {e}")
+            return False
 
 class ExamResultParameterScore(models.Model):
     """

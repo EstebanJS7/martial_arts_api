@@ -21,8 +21,13 @@ from .views import (
     EventParticipationVerifyView,
     MyEventParticipationsView,
 )
+from .belt_rank_views import BeltRankListView, BeltRankDetailView
 
 urlpatterns = [
+    # Endpoints para cinturones
+    path('belt-ranks/', BeltRankListView.as_view(), name='belt-rank-list'),
+    path('belt-ranks/<int:pk>/', BeltRankDetailView.as_view(), name='belt-rank-detail'),
+    
     # Endpoints para parámetros de evaluación
     path('parameters/', EvaluationParameterListCreateView.as_view(), name='evaluationparameter-list-create'),
     path('parameters/<int:pk>/', EvaluationParameterDetailView.as_view(), name='evaluationparameter-detail'),

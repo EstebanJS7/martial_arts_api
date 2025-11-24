@@ -126,3 +126,4 @@ Puedes probar el envío de correos usando el formulario de contacto en la landin
 - Revisa que `DEFAULT_FROM_EMAIL` tenga un formato válido
 - Verifica que los correos no estén en la carpeta de spam
 
+

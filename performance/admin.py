@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
     Discipline, 
-    EvaluationParameter, 
+    EvaluationParameter,
+    BeltRank,
     ExamSession, 
     ExamResult, 
     ExamResultParameterScore, 
@@ -21,17 +22,33 @@ class EvaluationParameterAdmin(admin.ModelAdmin):
     list_display = ('name',)
     search_fields = ('name',)
 
+@admin.register(BeltRank)
+class BeltRankAdmin(admin.ModelAdmin):
+    list_display = ('name', 'order_number', 'category', 'is_active', 'created_at')
+    list_filter = ('category', 'is_active', 'created_at')
+    search_fields = ('name',)
+    readonly_fields = ('created_at', 'updated_at')
+    ordering = ('order_number',)
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('name', 'order_number', 'category', 'is_active')
+        }),
+        ('Fechas', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+
 @admin.register(ExamSession)
 class ExamSessionAdmin(admin.ModelAdmin):
-    list_display = ('belt_level', 'exam_date', 'created_by')
-    list_filter = ('belt_level', 'exam_date')
-    search_fields = ('created_by__email', 'belt_level')
+    list_display = ('belt_rank', 'belt_level', 'exam_date', 'created_by')
+    list_filter = ('belt_rank', 'exam_date')
+    search_fields = ('created_by__email', 'belt_rank__name', 'belt_level')
 
 @admin.register(ExamResult)
 class ExamResultAdmin(admin.ModelAdmin):
-    list_display = ('exam_session', 'participant', 'graded')
-    list_filter = ('graded',)
-    search_fields = ('participant__email', 'exam_session__belt_level')
+    list_display = ('exam_session', 'participant', 'graded', 'passed')
+    list_filter = ('graded', 'passed')
+    search_fields = ('participant__email', 'exam_session__belt_rank__name', 'exam_session__belt_level')
 
 @admin.register(ExamResultParameterScore)
 class ExamResultParameterScoreAdmin(admin.ModelAdmin):
