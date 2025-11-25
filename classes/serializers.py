@@ -20,6 +20,8 @@ class ClassSerializer(serializers.ModelSerializer):
     difficulty_level_display = serializers.CharField(source='get_difficulty_level_display', read_only=True)
     cancelled_by_email = serializers.SerializerMethodField()
     cancelled_by_name = serializers.SerializerMethodField()
+    reservation_id = serializers.SerializerMethodField()
+    reservation_created_at = serializers.SerializerMethodField()
     
     class Meta:
         model = Class
@@ -51,11 +53,35 @@ class ClassSerializer(serializers.ModelSerializer):
     def get_available_spots(self, obj):
         return max(0, obj.max_students - obj.reservation_count)
     
+    def _get_user_reservation(self, obj):
+        request = self.context.get('request')
+        if not (request and request.user.is_authenticated):
+            return None
+        
+        reservations_map = self.context.get('user_reservations_map')
+        if reservations_map is not None:
+            return reservations_map.get(obj.id)
+        
+        return obj.userclassreservation_set.filter(
+            user=request.user,
+            is_cancelled=False
+        ).first()
+    
+    def get_reservation_id(self, obj):
+        reservation = self._get_user_reservation(obj)
+        return reservation.id if reservation else None
+    
+    def get_reservation_created_at(self, obj):
+        reservation = self._get_user_reservation(obj)
+        if reservation and reservation.created_at:
+            return reservation.created_at.isoformat()
+        return None
+    
     def get_is_reserved(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            return obj.userclassreservation_set.filter(user=request.user).exists()
-        return False
+            return self._get_user_reservation(obj) is not None
+        return False  # Públicos
     
     def get_is_reservable(self, obj):
         """
@@ -82,7 +108,7 @@ class ClassSerializer(serializers.ModelSerializer):
         # Verificar que el usuario no tenga ya una reserva
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            if obj.userclassreservation_set.filter(user=request.user).exists():
+            if self._get_user_reservation(obj):
                 return False
         
         return True
@@ -145,10 +171,23 @@ class ClassSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 class UserClassReservationSerializer(serializers.ModelSerializer):
+    class_details = serializers.SerializerMethodField()
+
     class Meta:
         model = UserClassReservation
         fields = '__all__'
         read_only_fields = ('user', 'created_at',)
+
+    def get_class_details(self, obj):
+        request = self.context.get('request')
+        serializer = ClassSerializer(
+            obj.class_reserved,
+            context={'request': request} if request else {}
+        )
+        data = serializer.data
+        data['reservation_id'] = obj.id
+        data['reservation_created_at'] = obj.created_at.isoformat()
+        return data
 
 class MultiClassCreateSerializer(serializers.Serializer):
     """

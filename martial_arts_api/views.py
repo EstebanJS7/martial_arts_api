@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 import requests
 from django.conf import settings
+from django.utils.html import strip_tags
 import logging
 
 logger = logging.getLogger(__name__)
@@ -71,23 +72,55 @@ class DashboardView(APIView):
         
         # 4. Obtener entradas destacadas del blog
         try:
-            from blog.views import FeaturedBlogPostsView
-            blog_view = FeaturedBlogPostsView()
-            blog_view.request = request
-            blog_response = blog_view.get(request)
-            if hasattr(blog_response, 'data'):
-                blog_posts = []
-                for post in blog_response.data:
-                    blog_posts.append({
-                        'id': post['id'],
-                        'title': post['title'],
-                        'excerpt': post['content'][:150] + '...' if len(post['content']) > 150 else post['content'],
-                        'author': post['author']['username'] if 'author' in post and 'username' in post['author'] else 'Anónimo',
-                        'date': post['created_at'],
-                        'imageUrl': post['image'] if post['image'] else '',
-                        'url': f"/blog/{post['id']}"
-                    })
-                dashboard_data['blogPosts'] = blog_posts
+            from blog.models import BlogPost
+
+            featured_posts = list(
+                BlogPost.objects.filter(is_featured=True).order_by('-created_at')[:3]
+            )
+            if len(featured_posts) < 3:
+                remaining = 3 - len(featured_posts)
+                recent_posts = list(
+                    BlogPost.objects.exclude(id__in=[post.id for post in featured_posts])
+                    .order_by('-created_at')[:remaining]
+                )
+                featured_posts.extend(recent_posts)
+
+            blog_posts = []
+            for post in featured_posts:
+                content = strip_tags(post.content or '')
+                excerpt = f"{content[:150]}..." if len(content) > 150 else content
+                blog_posts.append({
+                    'id': post.id,
+                    'title': post.title,
+                    'excerpt': excerpt,
+                    'author': post.author.get_full_name() or post.author.email or 'Anónimo',
+                    'date': post.created_at.isoformat(),
+                    'imageUrl': request.build_absolute_uri(post.image.url) if post.image else '',
+                    'url': f"/blog/{post.id}"
+                })
+
+            # Fallback: si no se encontraron posts (por ejemplo en bases vacías),
+            # consulta la API pública del blog para replicar el comportamiento de la landing.
+            if not blog_posts:
+                api_url = f"{base_url}/api/blog/posts/?page_size=3"
+                api_response = requests.get(api_url, timeout=5)
+                if api_response.status_code == 200:
+                    payload = api_response.json()
+                    posts_payload = payload.get('results', payload)
+                    for post in posts_payload[:3]:
+                        content = strip_tags(post.get('content', '') or '')
+                        excerpt = f"{content[:150]}..." if len(content) > 150 else content
+                        blog_posts.append({
+                            'id': post.get('id'),
+                            'title': post.get('title', ''),
+                            'excerpt': excerpt,
+                            'author': post.get('author_name') or 'Anónimo',
+                            'date': post.get('created_at'),
+                            'imageUrl': post.get('image') or '',
+                            'url': f"/blog/{post.get('id')}"
+                        })
+
+            dashboard_data['blogPosts'] = blog_posts
         except Exception as e:
             logger.error(f"Error obteniendo entradas del blog: {str(e)}")
         

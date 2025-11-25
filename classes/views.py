@@ -301,6 +301,26 @@ class UserClassReservationUpdateView(generics.UpdateAPIView):
         serializer.save()
         logger.info(f"{self.request.user.email} actualizó su reserva (ID: {old_reservation.pk}).")
 
+class MyClassReservationsView(generics.ListAPIView):
+    """
+    Lista las reservas activas del usuario autenticado con detalles de cada clase.
+    """
+    serializer_class = UserClassReservationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return (
+            UserClassReservation.objects
+            .filter(user=self.request.user, is_cancelled=False)
+            .select_related('class_reserved', 'class_reserved__instructor')
+            .order_by('-created_at')
+        )
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
 class UpcomingClassesView(APIView):
     """
     Vista para obtener las próximas clases programadas.
@@ -323,8 +343,28 @@ class UpcomingClassesView(APIView):
             date__lte=end_date
         ).select_related('instructor').order_by('date')
         
+        # Construir mapa de reservas del usuario autenticado para estas clases
+        user_reservations_map = {}
+        if request.user.is_authenticated:
+            user_reservations = UserClassReservation.objects.filter(
+                user=request.user,
+                class_reserved__in=upcoming_classes,
+                is_cancelled=False
+            ).select_related('class_reserved')
+            user_reservations_map = {
+                reservation.class_reserved_id: reservation
+                for reservation in user_reservations
+            }
+        
         # Serializar las clases con el contexto para el request
-        serializer = ClassSerializer(upcoming_classes, many=True, context={'request': request})
+        serializer = ClassSerializer(
+            upcoming_classes,
+            many=True,
+            context={
+                'request': request,
+                'user_reservations_map': user_reservations_map
+            }
+        )
         
         return Response(serializer.data)
 
