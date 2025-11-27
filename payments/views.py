@@ -399,6 +399,8 @@ class PaymentStatusExportView(APIView):
     permission_classes = [permissions.IsAdminUser]
     
     def get(self, request):
+        logger.info(f"PaymentStatusExportView called - Path: {request.path}, Query params: {request.query_params}")
+        
         format_type = request.query_params.get('format', 'pdf').lower()
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')

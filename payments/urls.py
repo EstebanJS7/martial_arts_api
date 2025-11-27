@@ -34,14 +34,14 @@ urlpatterns = [
     # Endpoint para que el usuario autenticado consulte sus pagos
     path('my-payments/', UserPaymentListView.as_view(), name='user-payments'),
     
-    # Endpoint para obtener las transacciones de un pago específico
-    path('<int:payment_id>/transactions/', PaymentTransactionListView.as_view(), name='payment-transactions'),
-    
-    # Endpoints para Dashboard de Pagos
+    # Endpoints para Dashboard de Pagos (antes de rutas con parámetros dinámicos)
     path('dashboard/', PaymentDashboardView.as_view(), name='payment-dashboard'),
     path('stats/monthly/', PaymentStatsView.as_view(), name='payment-stats-monthly'),
     path('stats/trends/', PaymentTrendsView.as_view(), name='payment-trends'),
     
-    # Endpoint para exportación de reportes
+    # Endpoint para exportación de reportes (antes de rutas con parámetros dinámicos)
     path('reports/status/', PaymentStatusExportView.as_view(), name='payment-status-export'),
+    
+    # Endpoint para obtener las transacciones de un pago específico (al final, después de rutas específicas)
+    path('<int:payment_id>/transactions/', PaymentTransactionListView.as_view(), name='payment-transactions'),
 ]
