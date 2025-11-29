@@ -25,7 +25,7 @@ ADMIN_PASSWORD = "admin123"
 # Datos de prueba
 FIRST_NAMES = ['Juan', 'María', 'Carlos', 'Ana', 'Luis', 'Laura', 'Pedro', 'Carmen']
 LAST_NAMES = ['García', 'Rodríguez', 'González', 'Fernández', 'López', 'Martínez']
-DOJOS = ['Dojo Central', 'Dojo Norte', 'Dojo Sur', 'Dojo Este']
+# DOJOS ahora se obtendrán de las academias existentes en la base de datos
 BELT_RANKS = ['Blanco', 'Amarillo', 'Naranja', 'Verde', 'Azul', 'Marrón', 'Negro 1er Dan']
 
 
@@ -53,16 +53,34 @@ class APIClient:
             print(f"✗ Error en login: {response.status_code} - {response.text}")
             return False
     
-    def register_user(self, email, password, first_name, last_name, role='student'):
+    def get_academies(self):
+        """Obtiene la lista de academias disponibles"""
+        response = self.session.get(f"{self.base_url}/contact/academies/")
+        if response.status_code == 200:
+            return response.json()
+        return []
+    
+    def register_user(self, email, password, first_name, last_name, dojo_id=None, role='student'):
         """Registra un nuevo usuario"""
+        register_data = {
+            "email": email,
+            "password": password,
+            "password2": password,
+            "first_name": first_name,
+            "last_name": last_name,
+            "belt_rank": random.choice(BELT_RANKS),
+            "city": "Asunción",
+            "address": "Dirección de prueba",
+            "phone_number": f"098{random.randint(1000000, 9999999)}"
+        }
+        
+        # Agregar dojo_id si se proporciona
+        if dojo_id:
+            register_data["dojo"] = dojo_id
+        
         response = self.session.post(
             f"{self.base_url}/users/register/",
-            json={
-                "email": email,
-                "password": password,
-                "first_name": first_name,
-                "last_name": last_name
-            }
+            json=register_data
         )
         if response.status_code in [200, 201]:
             user_id = response.json().get('user', {}).get('id')
@@ -70,6 +88,8 @@ class APIClient:
             if role != 'student' and user_id:
                 self.update_user_role(user_id, role)
             return user_id
+        else:
+            print(f"Error registrando usuario {email}: {response.status_code} - {response.text}")
         return None
     
     def update_user_role(self, user_id, role):
@@ -109,15 +129,24 @@ def populate_users(client, num_students=20, num_instructors=3):
     """Crea usuarios de prueba"""
     print("\n📝 Creando usuarios...")
     
+    # Obtener academias disponibles
+    academies = client.get_academies()
+    academy_ids = [academy['id'] for academy in academies if academy.get('is_active', True)]
+    
+    if not academy_ids:
+        print("⚠️  No se encontraron academias activas. Los usuarios se crearán sin academia asignada.")
+    
     # Crear instructores
     instructors = []
     for i in range(num_instructors):
         email = f"instructor{i+1}@test.com"
+        dojo_id = random.choice(academy_ids) if academy_ids else None
         user_id = client.register_user(
             email=email,
             password="test123",
             first_name=random.choice(FIRST_NAMES),
             last_name=random.choice(LAST_NAMES),
+            dojo_id=dojo_id,
             role="instructor"
         )
         if user_id:
@@ -129,11 +158,13 @@ def populate_users(client, num_students=20, num_instructors=3):
     students = []
     for i in range(num_students):
         email = f"student{i+1}@test.com"
+        dojo_id = random.choice(academy_ids) if academy_ids else None
         user_id = client.register_user(
             email=email,
             password="test123",
             first_name=random.choice(FIRST_NAMES),
             last_name=random.choice(LAST_NAMES),
+            dojo_id=dojo_id,
             role="student"
         )
         if user_id:

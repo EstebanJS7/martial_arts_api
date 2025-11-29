@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser
 from .managers import CustomUserManager
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from contact.models import Academy
 
 class CustomUser(AbstractUser):
     # Se elimina el campo username para usar el email como identificador único
@@ -29,8 +30,24 @@ class UserProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     # Se elimina first_name y last_name, ya que están definidos en CustomUser
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='student')
-    belt_rank = models.CharField(max_length=50)
-    dojo = models.CharField(max_length=100)
+    belt_rank = models.ForeignKey(
+        'performance.BeltRank',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users',
+        verbose_name='Cinturón',
+        help_text='Cinturón actual del usuario'
+    )
+    dojo = models.ForeignKey(
+        Academy,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='students',
+        verbose_name='Academia',
+        help_text='Academia a la que pertenece el usuario'
+    )
     is_exempt = models.BooleanField(default=False)
     address = models.CharField(max_length=255, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)

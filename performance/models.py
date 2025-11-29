@@ -162,10 +162,8 @@ class ExamResult(models.Model):
             user_profile = self.participant.userprofile
             new_belt = self.exam_session.belt_rank
             
-            # Actualizar el cinturón del usuario
-            # Por ahora actualizamos el campo belt_rank como string
-            # Más adelante se puede cambiar a ForeignKey
-            user_profile.belt_rank = new_belt.name
+            # Actualizar el cinturón del usuario usando ForeignKey
+            user_profile.belt_rank = new_belt
             user_profile.save()
             
             # Log para debugging

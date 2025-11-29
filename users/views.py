@@ -94,7 +94,8 @@ class LoginView(APIView):
                     'first_name': user.first_name,
                     'last_name': user.last_name,
                     'role': user_profile.role,
-                    'dojo': user_profile.dojo,
+                    'dojo': user_profile.dojo.name if user_profile.dojo else None,
+                    'dojo_id': user_profile.dojo.id if user_profile.dojo else None,
                 }
             except UserProfile.DoesNotExist:
                 # Si no existe el perfil, crear uno básico
@@ -105,7 +106,8 @@ class LoginView(APIView):
                     'first_name': user.first_name,
                     'last_name': user.last_name,
                     'role': user_profile.role,
-                    'dojo': user_profile.dojo,
+                    'dojo': user_profile.dojo.name if user_profile.dojo else None,
+                    'dojo_id': user_profile.dojo.id if user_profile.dojo else None,
                 }
             
             return Response({
@@ -367,7 +369,8 @@ class VerifyTokenView(APIView):
                 'first_name': user.first_name,
                 'last_name': user.last_name,
                 'role': user.userprofile.role,
-                'dojo': user.userprofile.dojo
+                'dojo': user.userprofile.dojo.name if user.userprofile.dojo else None,
+                'dojo_id': user.userprofile.dojo.id if user.userprofile.dojo else None,
             }
         })
 
