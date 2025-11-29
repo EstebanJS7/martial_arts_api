@@ -13,6 +13,7 @@ from .models import (
     EventParticipation,
 )
 from django.contrib.auth import get_user_model
+from notifications.services import create_and_notify
 
 User = get_user_model()
 
@@ -54,7 +55,14 @@ class ExamResultSerializer(serializers.ModelSerializer):
     parameter_scores = ExamResultParameterScoreSerializer(many=True)
     participant_name = serializers.SerializerMethodField()
     belt_level = serializers.CharField(source='exam_session.belt_level', read_only=True)
-    belt_rank_name = serializers.CharField(source='exam_session.belt_rank.name', read_only=True)
+    belt_rank_name = serializers.SerializerMethodField()
+    evaluation_parameters = serializers.SerializerMethodField()
+    
+    def get_belt_rank_name(self, obj):
+        """Obtiene el nombre del cinturón de forma segura"""
+        if obj.exam_session and obj.exam_session.belt_rank:
+            return obj.exam_session.belt_rank.name
+        return None
 
     def get_participant_name(self, obj):
         """Devuelve el nombre completo del participante o el email si no tiene nombre"""
@@ -66,10 +74,17 @@ class ExamResultSerializer(serializers.ModelSerializer):
             return obj.participant.last_name
         else:
             return obj.participant.email
+    
+    def get_evaluation_parameters(self, obj):
+        """Obtiene los parámetros de evaluación de la sesión de examen"""
+        if obj.exam_session:
+            # Obtener los IDs de los parámetros de evaluación de la sesión
+            return list(obj.exam_session.evaluation_parameters.values_list('id', flat=True))
+        return []
 
     class Meta:
         model = ExamResult
-        fields = ['id', 'exam_session', 'participant', 'participant_name', 'belt_level', 'belt_rank_name', 'graded', 'passed', 'parameter_scores']
+        fields = ['id', 'exam_session', 'participant', 'participant_name', 'belt_level', 'belt_rank_name', 'graded', 'passed', 'parameter_scores', 'evaluation_parameters']
         read_only_fields = ['graded', 'passed']  # graded y passed se calculan automáticamente
 
     def create(self, validated_data):
@@ -104,9 +119,39 @@ class ExamResultSerializer(serializers.ModelSerializer):
             for score_data in scores_data:
                 ExamResultParameterScore.objects.create(exam_result=instance, **score_data)
         
-        # Si cambió de no aprobado a aprobado, actualizar el cinturón
+        # Si cambió de no aprobado a aprobado, actualizar el cinturón y enviar notificación
         if (not old_passed and instance.passed) or (not old_graded and instance.graded and instance.passed):
+            # Obtener el cinturón anterior antes de actualizar
+            try:
+                user_profile = instance.participant.userprofile
+                old_belt_name = user_profile.belt_rank or "Sin cinturón"
+            except Exception:
+                old_belt_name = "Sin cinturón"
+            
+            # Actualizar el cinturón del usuario
             instance.update_user_belt()
+            
+            # Obtener el nuevo cinturón después de actualizar
+            try:
+                user_profile.refresh_from_db()
+                new_belt_name = user_profile.belt_rank or "Sin cinturón"
+            except Exception:
+                new_belt_name = instance.exam_session.belt_rank.name if instance.exam_session.belt_rank else "N/A"
+            
+            # Crear y enviar notificación de éxito
+            create_and_notify(
+                recipient_id=instance.participant.id,
+                title='¡Felicitaciones! Has aprobado el examen',
+                message=f'Has aprobado el examen para el cinturón {new_belt_name}. Tu cinturón ha sido actualizado de {old_belt_name} a {new_belt_name}.',
+                ntype='success',
+                payload={
+                    'exam_result_id': instance.id,
+                    'exam_session_id': instance.exam_session.id,
+                    'old_belt': old_belt_name,
+                    'new_belt': new_belt_name,
+                    'belt_level': instance.exam_session.belt_level,
+                }
+            )
         
         return instance
 
@@ -181,9 +226,49 @@ class ExamSessionSerializer(serializers.ModelSerializer):
         exam_session.participants.set(participants)
         exam_session.evaluation_parameters.set(evaluation_parameters)
         
+        # Log para verificar que se guardaron los parámetros
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"ExamSession {exam_session.id} creada con {len(participants)} participantes y {len(evaluation_parameters)} parámetros de evaluación")
+        logger.info(f"Parámetros guardados: {[p.id for p in evaluation_parameters]}")
+        
         # Crear automáticamente un ExamResult para cada participante válido
+        created_results = []
         for user in participants:
-            ExamResult.objects.get_or_create(exam_session=exam_session, participant=user)
+            try:
+                exam_result, created = ExamResult.objects.get_or_create(
+                    exam_session=exam_session, 
+                    participant=user,
+                    defaults={'graded': False, 'passed': False}
+                )
+                created_results.append(exam_result.id)
+                logger.info(f"ExamResult {'creado' if created else 'ya existía'} para usuario {user.email} en sesión {exam_session.id}")
+            except Exception as e:
+                logger.error(f"Error creando ExamResult para usuario {user.email} en sesión {exam_session.id}: {e}")
+        
+        logger.info(f"Total de ExamResult creados para sesión {exam_session.id}: {len(created_results)}")
+        
+        # Enviar notificaciones a todos los participantes
+        belt_rank_name = exam_session.belt_rank.name if exam_session.belt_rank else exam_session.belt_level
+        exam_date_str = exam_session.exam_date.strftime('%d/%m/%Y')
+        
+        for user in participants:
+            try:
+                create_and_notify(
+                    recipient_id=user.id,
+                    title='Nueva sesión de examen programada',
+                    message=f'Has sido registrado para un examen de cinturón {belt_rank_name} el día {exam_date_str}. ¡Prepárate bien!',
+                    ntype='info',
+                    payload={
+                        'exam_session_id': exam_session.id,
+                        'belt_rank': belt_rank_name,
+                        'exam_date': exam_session.exam_date.isoformat(),
+                        'belt_level': exam_session.belt_level,
+                    }
+                )
+                logger.info(f"Notificación enviada a {user.email} para sesión {exam_session.id}")
+            except Exception as e:
+                logger.error(f"Error enviando notificación a {user.email} para sesión {exam_session.id}: {e}")
         
         return exam_session
 

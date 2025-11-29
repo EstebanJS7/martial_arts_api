@@ -51,9 +51,9 @@ class ExamSessionListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAdminUser | IsInstructorUser]
     
     def get_queryset(self):
-        # Optimización: Usar select_related para el creador y prefetch_related para participantes
-        return ExamSession.objects.select_related('created_by').prefetch_related(
-            'participants'
+        # Optimización: Usar select_related para el creador y prefetch_related para participantes y parámetros
+        return ExamSession.objects.select_related('created_by', 'belt_rank').prefetch_related(
+            'participants', 'evaluation_parameters'
         ).order_by('-exam_date')
 
     def perform_create(self, serializer):
@@ -64,8 +64,8 @@ class ExamSessionDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminUser | IsInstructorUser]
     
     def get_queryset(self):
-        return ExamSession.objects.select_related('created_by').prefetch_related(
-            'participants'
+        return ExamSession.objects.select_related('created_by', 'belt_rank').prefetch_related(
+            'participants', 'evaluation_parameters'
         )
 
 # --- Endpoints para ExamResult ---
