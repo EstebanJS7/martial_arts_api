@@ -134,25 +134,56 @@ class ExamSessionSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         participants = validated_data.pop('participants', [])
         evaluation_parameters = validated_data.pop('evaluation_parameters', [])
+        
+        # Validar participantes ANTES de crear la sesión
+        invalid_participants = []
+        belt_rank = validated_data.get('belt_rank')
+        belt_rank_name = 'N/A'
+        
+        # Obtener el nombre del cinturón de forma segura
+        if belt_rank:
+            belt_rank_name = belt_rank.name
+        
+        # Crear una sesión temporal para validar (sin guardar en BD)
+        # Necesitamos crear un objeto ExamSession temporal con los datos validados
+        temp_exam_session = ExamSession(
+            belt_rank=belt_rank,
+            exam_date=validated_data.get('exam_date'),
+            created_by=validated_data.get('created_by')
+        )
+        
+        # Validar cada participante
+        for user in participants:
+            if not ExamResult.can_take_exam(user, temp_exam_session):
+                # Obtener información del usuario para el mensaje de error
+                user_name = user.email
+                if user.first_name or user.last_name:
+                    user_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email
+                invalid_participants.append({
+                    'id': user.id,
+                    'email': user.email,
+                    'name': user_name
+                })
+        
+        # Si hay participantes inválidos, lanzar error
+        if invalid_participants:
+            invalid_names = [p['name'] for p in invalid_participants]
+            raise serializers.ValidationError({
+                'participants': [
+                    f"Los siguientes usuarios no pueden tomar este examen para el cinturón '{belt_rank_name}': {', '.join(invalid_names)}. "
+                    f"Un usuario solo puede tomar examen para el siguiente cinturón después del suyo actual."
+                ],
+                'invalid_participants': invalid_participants
+            })
+        
+        # Si todos los participantes son válidos, crear la sesión y los resultados
         exam_session = ExamSession.objects.create(**validated_data)
         exam_session.participants.set(participants)
         exam_session.evaluation_parameters.set(evaluation_parameters)
-        # Opcional: Crear automáticamente un ExamResult para cada participante
-        invalid_participants = []
-        for user in participants:
-            # Validar que el usuario puede tomar este examen
-            if ExamResult.can_take_exam(user, exam_session):
-                ExamResult.objects.get_or_create(exam_session=exam_session, participant=user)
-            else:
-                invalid_participants.append(user.email)
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Usuario {user.email} no puede tomar examen para {exam_session.belt_rank.name}")
         
-        # Si hay participantes inválidos, lanzar una advertencia pero no fallar
-        if invalid_participants:
-            import warnings
-            warnings.warn(f"Algunos participantes no pueden tomar este examen: {', '.join(invalid_participants)}")
+        # Crear automáticamente un ExamResult para cada participante válido
+        for user in participants:
+            ExamResult.objects.get_or_create(exam_session=exam_session, participant=user)
         
         return exam_session
 
