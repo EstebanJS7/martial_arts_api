@@ -18,7 +18,6 @@ from .serializers import UserSerializer, PublicInstructorSerializer
 from .permissions import IsAdminUser, IsAdminOrInstructor
 from .forms import EmailAuthenticationForm
 from payments.models import Payment
-from payments.services import PaymentService 
 import logging
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -50,14 +49,9 @@ class RegisterView(generics.CreateAPIView):
     
     def perform_create(self, serializer):
         # Crear el usuario
-        user = serializer.save()
-        
-        # Intentar crear los pagos automáticos para el usuario hasta fin de año
-        try:
-            PaymentService.create_payments_for_remaining_year(user)
-        except Exception as e:
-            # Se registra el error pero no se impide el registro del usuario
-            logger.error(f"Error creando pagos para el usuario {user.email}: {e}")
+        # Los pagos se crearán automáticamente mediante la señal create_first_payments_for_student
+        # en users/models.py cuando se cree el UserProfile con rol 'student'
+        serializer.save()
 
 class LoginView(APIView):
     """
