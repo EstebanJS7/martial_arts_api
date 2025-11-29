@@ -30,13 +30,20 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         
         # Crear la transacción asociada si se proporcionó información adicional
         if payment_method or external_transaction_id:
-            PaymentTransaction.objects.create(
+            transaction = PaymentTransaction.objects.create(
                 payment=payment,
                 amount=payment.amount,
                 payment_method=payment_method,
                 external_transaction_id=external_transaction_id,
                 description=payment.description
             )
+            
+            # Si la transacción es por el monto completo del pago, marcar el pago como pagado
+            if transaction.amount >= payment.amount:
+                payment.amount_paid = payment.amount
+                payment.is_paid = True
+                payment.is_fully_paid = True
+                payment.save()
         
         return payment
 

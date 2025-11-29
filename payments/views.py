@@ -390,6 +390,68 @@ class PaymentTrendsView(APIView):
             )
 
 
+class PaymentReportView(APIView):
+    """
+    Vista para obtener reporte de pagos con estadísticas generales y mensuales.
+    Acceso solo para administradores e instructores.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Verificar permisos: solo admin o instructor pueden acceder
+        if not request.user.is_staff and not (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor'):
+            return Response(
+                {'detail': 'No tienes permiso para acceder a este recurso.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        try:
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            
+            start_date_parsed = None
+            end_date_parsed = None
+            
+            if start_date:
+                try:
+                    start_date_parsed = datetime.strptime(start_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response(
+                        {'detail': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            if end_date:
+                try:
+                    end_date_parsed = datetime.strptime(end_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response(
+                        {'detail': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Validar que start_date no sea mayor que end_date
+            if start_date_parsed and end_date_parsed and start_date_parsed > end_date_parsed:
+                return Response(
+                    {'detail': 'La fecha de inicio no puede ser mayor que la fecha de fin.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Obtener reporte del servicio
+            report = PaymentDashboardService.get_payment_report(
+                start_date=start_date_parsed,
+                end_date=end_date_parsed
+            )
+            
+            return Response(report, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error al obtener reporte de pagos: {str(e)}")
+            return Response(
+                {'detail': f'Error al generar el reporte: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 class PaymentStatusExportView(APIView):
     """
     Exporta reporte del estado de pagos de usuarios en PDF o Excel.

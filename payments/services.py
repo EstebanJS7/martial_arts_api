@@ -1,6 +1,6 @@
 from decimal import Decimal
 from datetime import date, datetime, timedelta
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, Exists, OuterRef
 from .models import Payment, QuotaConfig, PaymentTransaction, PaymentStats
 
 class PaymentService:
@@ -347,3 +347,165 @@ class PaymentDashboardService:
             stats.save()
         
         return stats
+    
+    @classmethod
+    def get_payment_report(cls, start_date=None, end_date=None):
+        """
+        Genera un reporte completo de pagos con estadísticas generales y mensuales.
+        
+        Args:
+            start_date: Fecha de inicio para filtrar (opcional)
+            end_date: Fecha de fin para filtrar (opcional)
+        
+        Returns:
+            Dict con total_payments, total_amount, paid_payments, pending_payments,
+            overdue_payments y monthly_stats
+        """
+        today = date.today()
+        
+        # Base queryset - incluir todos los pagos
+        base_queryset = Payment.objects.all()
+        
+        # Aplicar filtros de fecha si se proporcionan
+        # Incluir pagos que:
+        # 1. Tienen due_date en el rango (pagos pendientes/vencidos)
+        # 2. Tienen transacciones dentro del rango (pagos pagados en ese período)
+        # 3. Tienen due_date extendido para capturar pagos recién creados
+        filtered_queryset = base_queryset
+        if start_date or end_date:
+            # Construir condiciones para el filtro
+            conditions = Q()
+            
+            # Condición 1: Pagos cuyo due_date está en el rango (o extendido)
+            due_date_condition = Q()
+            if start_date:
+                due_date_condition &= Q(due_date__gte=start_date)
+            if end_date:
+                # Extender hasta el último día del mes siguiente para incluir pagos recién creados
+                if end_date.month == 12:
+                    extended_end_date = date(end_date.year + 1, 1, 31)
+                else:
+                    extended_end_date = date(end_date.year, end_date.month + 2, 1) - timedelta(days=1)
+                due_date_condition &= Q(due_date__lte=extended_end_date)
+            
+            # Condición 2: Pagos pagados que tienen transacciones dentro del rango de fechas
+            transaction_condition = Q()
+            if start_date or end_date:
+                # Buscar pagos que tienen transacciones en el rango
+                transaction_filter = {}
+                if start_date:
+                    transaction_filter['transaction_date__date__gte'] = start_date
+                if end_date:
+                    transaction_filter['transaction_date__date__lte'] = end_date
+                
+                # Pagos que tienen al menos una transacción en el rango
+                payments_with_transactions = PaymentTransaction.objects.filter(
+                    payment=OuterRef('pk'),
+                    **transaction_filter
+                )
+                transaction_condition = Q(is_fully_paid=True) & Exists(payments_with_transactions)
+            
+            # Combinar condiciones: pagos que cumplen cualquiera de las dos condiciones
+            if due_date_condition and transaction_condition:
+                conditions = due_date_condition | transaction_condition
+            elif due_date_condition:
+                conditions = due_date_condition
+            elif transaction_condition:
+                conditions = transaction_condition
+            
+            if conditions:
+                filtered_queryset = base_queryset.filter(conditions)
+        else:
+            # Sin filtros, incluir todos los pagos
+            filtered_queryset = base_queryset
+        
+        # Estadísticas generales usando el queryset filtrado
+        total_payments = filtered_queryset.count()
+        total_amount = filtered_queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+        paid_payments = filtered_queryset.filter(is_fully_paid=True).count()
+        
+        # Para pending y overdue, usar el queryset filtrado pero aplicar la lógica de fecha actual
+        pending_payments = filtered_queryset.filter(
+            is_fully_paid=False,
+            due_date__gte=today
+        ).count()
+        overdue_payments = filtered_queryset.filter(
+            is_fully_paid=False,
+            due_date__lt=today
+        ).count()
+        
+        # Estadísticas mensuales
+        monthly_stats = []
+        
+        # Determinar el rango de meses a analizar
+        if start_date and end_date:
+            # Usar el rango proporcionado, comenzando desde el primer día del mes de start_date
+            current_date = start_date.replace(day=1)
+            # Extender hasta el mes siguiente de end_date para incluir pagos recién creados
+            # que puedan tener due_date en el mes siguiente
+            if end_date.month == 12:
+                end_month = date(end_date.year + 1, 1, 1)
+            else:
+                end_month = date(end_date.year, end_date.month + 1, 1)
+        else:
+            # Si no hay filtros, usar los últimos 12 meses desde hoy
+            current_date = today.replace(day=1) - timedelta(days=365)
+            # Incluir también el mes actual y el próximo mes para capturar pagos recién creados
+            if today.month == 12:
+                end_month = date(today.year + 1, 1, 1)
+            else:
+                end_month = date(today.year, today.month + 1, 1)
+        
+        # Iterar por cada mes en el rango
+        while current_date <= end_month:
+            month_start = current_date
+            if current_date.month == 12:
+                month_end = date(current_date.year + 1, 1, 1) - timedelta(days=1)
+            else:
+                month_end = date(current_date.year, current_date.month + 1, 1) - timedelta(days=1)
+            
+            # Filtrar pagos del mes actual
+            # Cada pago debe aparecer solo en UN mes: el mes de su due_date
+            # Las transacciones solo se usan para determinar si está pagado, no para agrupar por mes
+            month_payments = Payment.objects.filter(
+                due_date__gte=month_start,
+                due_date__lte=month_end
+            )
+            
+            # Aplicar filtros adicionales si existen
+            if start_date and month_start < start_date:
+                # Para pagos con due_date, aplicar el filtro
+                # Para pagos con transacciones, ya están filtrados por la transacción
+                month_payments = month_payments.filter(
+                    Q(due_date__gte=start_date) | Q(is_fully_paid=True)
+                )
+            if end_date and month_end > end_date:
+                month_payments = month_payments.filter(
+                    Q(due_date__lte=end_date) | Q(is_fully_paid=True)
+                )
+            
+            month_total_amount = month_payments.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            month_paid_count = month_payments.filter(is_fully_paid=True).count()
+            month_pending_count = month_payments.filter(is_fully_paid=False).count()
+            
+            monthly_stats.append({
+                'month': month_start.strftime('%Y-%m'),
+                'total_amount': float(month_total_amount),
+                'paid_count': month_paid_count,
+                'pending_count': month_pending_count
+            })
+            
+            # Siguiente mes
+            if current_date.month == 12:
+                current_date = current_date.replace(year=current_date.year + 1, month=1)
+            else:
+                current_date = current_date.replace(month=current_date.month + 1)
+        
+        return {
+            'total_payments': total_payments,
+            'total_amount': float(total_amount),
+            'paid_payments': paid_payments,
+            'pending_payments': pending_payments,
+            'overdue_payments': overdue_payments,
+            'monthly_stats': monthly_stats
+        }
