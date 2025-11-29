@@ -27,7 +27,6 @@ from .utils import create_next_month_payment
 from .filters import PaymentFilter
 from rest_framework.generics import ListAPIView
 from .serializers import PaymentTransactionSerializer
-from .export_service import PaymentExportService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -448,62 +447,5 @@ class PaymentReportView(APIView):
             logger.error(f"Error al obtener reporte de pagos: {str(e)}")
             return Response(
                 {'detail': f'Error al generar el reporte: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-class PaymentStatusExportView(APIView):
-    """
-    Exporta reporte del estado de pagos de usuarios en PDF o Excel.
-    Muestra quiénes están al día, con deuda, etc.
-    Solo admin.
-    """
-    permission_classes = [permissions.IsAdminUser]
-    
-    def get(self, request):
-        logger.info(f"PaymentStatusExportView called - Path: {request.path}, Query params: {request.query_params}")
-        
-        format_type = request.query_params.get('format', 'pdf').lower()
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        
-        if format_type not in ['pdf', 'excel']:
-            return Response(
-                {'error': 'Formato no válido. Use "pdf" o "excel".'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        start_date_parsed = None
-        end_date_parsed = None
-        
-        if start_date:
-            try:
-                start_date_parsed = datetime.strptime(start_date, '%Y-%m-%d').date()
-            except ValueError:
-                return Response(
-                    {'error': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        if end_date:
-            try:
-                end_date_parsed = datetime.strptime(end_date, '%Y-%m-%d').date()
-            except ValueError:
-                return Response(
-                    {'error': 'Formato de fecha inválido. Use YYYY-MM-DD.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        try:
-            response = PaymentExportService.export_payment_status_report(
-                start_date=start_date_parsed,
-                end_date=end_date_parsed,
-                format=format_type
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Error al exportar reporte de estado de pagos: {str(e)}")
-            return Response(
-                {'error': 'Error al generar el reporte.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

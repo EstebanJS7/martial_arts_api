@@ -12,8 +12,7 @@ from .views import (
     PaymentDashboardView,
     PaymentStatsView,
     PaymentTrendsView,
-    PaymentReportView,
-    PaymentStatusExportView
+    PaymentReportView
 )
 
 urlpatterns = [
@@ -42,9 +41,6 @@ urlpatterns = [
     
     # Endpoint para reporte de pagos (antes de rutas con parámetros dinámicos)
     path('report/', PaymentReportView.as_view(), name='payment-report'),
-    
-    # Endpoint para exportación de reportes (antes de rutas con parámetros dinámicos)
-    path('reports/status/', PaymentStatusExportView.as_view(), name='payment-status-export'),
     
     # Endpoint para obtener las transacciones de un pago específico (al final, después de rutas específicas)
     path('<int:payment_id>/transactions/', PaymentTransactionListView.as_view(), name='payment-transactions'),
