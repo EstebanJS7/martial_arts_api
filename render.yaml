@@ -6,9 +6,12 @@ services:
   - type: web
     name: martial-arts-api
     env: python
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: daphne -b 0.0.0.0 -p $PORT martial_arts_api.asgi:application
+    runtime: python-3.12
+    buildCommand: python3.12 -m pip install -r requirements.txt && python3.12 manage.py collectstatic --noinput
+    startCommand: python3.12 -m daphne -b 0.0.0.0 -p $PORT martial_arts_api.asgi:application
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
       - key: SECRET_KEY
         generateValue: true
       - key: DEBUG
@@ -43,8 +46,9 @@ services:
   - type: worker
     name: martial-arts-celery-worker
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A martial_arts_api worker --loglevel=info
+    runtime: python-3.12
+    buildCommand: python3.12 -m pip install -r requirements.txt
+    startCommand: python3.12 -m celery -A martial_arts_api worker --loglevel=info
     envVars:
       - key: SECRET_KEY
         fromService:
@@ -76,8 +80,9 @@ services:
   - type: worker
     name: martial-arts-celery-beat
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A martial_arts_api beat --loglevel=info
+    runtime: python-3.12
+    buildCommand: python3.12 -m pip install -r requirements.txt
+    startCommand: python3.12 -m celery -A martial_arts_api beat --loglevel=info
     envVars:
       - key: SECRET_KEY
         fromService:
