@@ -60,6 +60,8 @@ else
 fi
 
 echo "Iniciando servidor..."
+echo "[DEBUG] Verificando que el middleware esté disponible..."
+python -c "from martial_arts_api.middleware import HealthCheckMiddleware; print('✓ HealthCheckMiddleware disponible')" || echo "✗ ERROR: HealthCheckMiddleware no disponible"
 
 # Expandir $PORT en los argumentos (Railway pasa $PORT como literal)
 # Railway inyecta $PORT como variable de entorno, pero cuando se pasa como argumento

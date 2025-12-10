@@ -22,13 +22,16 @@ def health_check_view(request):
     Siempre devuelve 200 OK para indicar que el servidor está funcionando.
     Usa vista de función Django pura para evitar redirecciones del middleware.
     """
+    logger.info(f"[health_check_view] Llamada recibida: path={request.path}, method={request.method}")
     # Marcar que no debe redirigir esta respuesta
     response = JsonResponse({
         "status": "healthy",
         "service": "martial_arts_api"
     }, status=200)
     # Prevenir cualquier redirección
-    response['Location'] = None
+    if 'Location' in response:
+        del response['Location']
+    logger.info(f"[health_check_view] Respuesta creada: status=200 para {request.path}")
     return response
 
 class DashboardView(APIView):
