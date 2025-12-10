@@ -21,7 +21,25 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 # ALLOWED_HOSTS - Configuración desde variable de entorno o lista por defecto
 ALLOWED_HOSTS_ENV = os.getenv('ALLOWED_HOSTS', '')
 if ALLOWED_HOSTS_ENV:
-    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_ENV.split(',') if host.strip()]
+    # Limpiar hosts: quitar protocolos (http://, https://), paths (/), y espacios
+    cleaned_hosts = []
+    for host in ALLOWED_HOSTS_ENV.split(','):
+        host = host.strip()
+        if not host:
+            continue
+        # Quitar protocolo si existe
+        if host.startswith('http://'):
+            host = host[7:]
+        elif host.startswith('https://'):
+            host = host[8:]
+        # Quitar path (todo después de /)
+        if '/' in host:
+            host = host.split('/')[0]
+        # Quitar puerto si existe (opcional, pero mejor dejarlo)
+        # host = host.split(':')[0]  # Descomentar si quieres quitar puertos
+        if host and host not in cleaned_hosts:
+            cleaned_hosts.append(host)
+    ALLOWED_HOSTS = cleaned_hosts
 else:
     # En desarrollo, permitir localhost
     ALLOWED_HOSTS = ['localhost', '127.0.0.1'] if DEBUG else []
