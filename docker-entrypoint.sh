@@ -2,8 +2,10 @@
 set -e
 
 # Detectar si estamos en producción (usando Supabase/Upstash) o desarrollo (docker-compose)
-if [ -n "$DATABASE_URL" ] && [[ "$DATABASE_URL" == *"supabase"* ]] || [ -n "$REDIS_URL" ] && [[ "$REDIS_URL" == *"upstash"* ]]; then
-  echo "Modo PRODUCCIÓN detectado (Supabase/Upstash)"
+# En producción, las URLs contienen "supabase" o "upstash", o no hay servicios locales "db" y "redis"
+if [ -n "$DATABASE_URL" ] && ([[ "$DATABASE_URL" == *"supabase"* ]] || [[ "$DATABASE_URL" == *"railway"* ]] || [[ "$DATABASE_URL" == *"render"* ]]) || \
+   [ -n "$REDIS_URL" ] && ([[ "$REDIS_URL" == *"upstash"* ]] || [[ "$REDIS_URL" == *"railway"* ]] || [[ "$REDIS_URL" == *"render"* ]]); then
+  echo "Modo PRODUCCIÓN detectado (Supabase/Upstash/Railway/Render)"
   # En producción, no esperamos por db/redis locales
   # Solo verificamos que las variables estén configuradas
   if [ -z "$DATABASE_URL" ]; then
@@ -11,8 +13,18 @@ if [ -n "$DATABASE_URL" ] && [[ "$DATABASE_URL" == *"supabase"* ]] || [ -n "$RED
     exit 1
   fi
   if [ -z "$REDIS_URL" ]; then
-    echo "ERROR: REDIS_URL no está configurada"
+    echo "WARNING: REDIS_URL no está configurada (puede ser opcional)"
+  fi
+  echo "Variables de entorno configuradas correctamente"
+elif ! nc -z db 5432 2>/dev/null; then
+  # Si no podemos conectar a "db", asumimos producción
+  echo "Modo PRODUCCIÓN detectado (no hay servicios locales)"
+  if [ -z "$DATABASE_URL" ]; then
+    echo "ERROR: DATABASE_URL no está configurada"
     exit 1
+  fi
+  if [ -z "$REDIS_URL" ]; then
+    echo "WARNING: REDIS_URL no está configurada (puede ser opcional)"
   fi
   echo "Variables de entorno configuradas correctamente"
 else
