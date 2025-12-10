@@ -25,7 +25,7 @@ from rest_framework_simplejwt.views import (
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
-from .views import DashboardView, HealthCheckView
+from .views import DashboardView, health_check_view
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -41,7 +41,8 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
-    path('health/', HealthCheckView.as_view(), name='health_check'),
+    path('health', health_check_view, name='health_check'),
+    path('health/', health_check_view, name='health_check_slash'),
     path('admin/', admin.site.urls),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

@@ -6,26 +6,27 @@ import requests
 from django.conf import settings
 from django.utils.html import strip_tags
 from django.db import connection
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.common import no_append_slash
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
 
-class HealthCheckView(APIView):
+@no_append_slash
+@require_http_methods(["GET"])
+def health_check_view(request):
     """
-    Vista de healthcheck para Railway y otros servicios de deployment.
+    Vista de healthcheck simple para Railway y otros servicios de deployment.
     Siempre devuelve 200 OK para indicar que el servidor está funcionando.
-    No verifica la base de datos para responder rápidamente.
+    Usa vista de función Django pura para evitar redirecciones del middleware.
     """
-    permission_classes = [AllowAny]
-    
-    def get(self, request):
-        # Respuesta simple y rápida para healthcheck
-        # No verificamos DB aquí para evitar timeouts
-        return Response({
-            "status": "healthy",
-            "service": "martial_arts_api"
-        }, status=status.HTTP_200_OK)
+    return JsonResponse({
+        "status": "healthy",
+        "service": "martial_arts_api"
+    }, status=200)
 
 class DashboardView(APIView):
     """
