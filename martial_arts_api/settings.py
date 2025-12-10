@@ -256,6 +256,20 @@ CELERY_BEAT_SCHEDULE = {
 # En producción, usar solo orígenes específicos
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 
+# Función para limpiar URLs (quitar paths y barras finales)
+def clean_origin_url(url):
+    """Limpia una URL para usar como origen CORS (solo dominio, sin path)"""
+    if not url:
+        return None
+    url = url.strip()
+    # Quitar barras finales
+    url = url.rstrip('/')
+    # Si tiene path (después de /), extraer solo el dominio
+    parsed = urlparse(url)
+    # Construir solo el esquema + netloc (dominio)
+    clean_url = f"{parsed.scheme}://{parsed.netloc}"
+    return clean_url
+
 # Orígenes permitidos (solo se usan si CORS_ALLOW_ALL_ORIGINS = False)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
@@ -266,6 +280,16 @@ CORS_ALLOWED_ORIGINS = [
     # "https://tu-dominio.com",
     # "https://www.tu-dominio.com",
 ]
+
+# Si CORS_ALLOWED_ORIGINS está configurado como variable de entorno, agregarlo
+CORS_ALLOWED_ORIGINS_ENV = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if CORS_ALLOWED_ORIGINS_ENV:
+    # Puede ser una lista separada por comas
+    origins = [clean_origin_url(origin.strip()) for origin in CORS_ALLOWED_ORIGINS_ENV.split(',') if origin.strip()]
+    # Agregar solo los que se limpiaron correctamente
+    for origin in origins:
+        if origin and origin not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(origin)
 
 # Permitir orígenes con regex (útil para subdominios)
 CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -351,8 +375,10 @@ FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
 # Si FRONTEND_URL está configurado y no está en DEBUG, agregarlo a CORS_ALLOWED_ORIGINS
 # (en DEBUG, CORS_ALLOW_ALL_ORIGINS ya permite todos los orígenes)
-if not DEBUG and FRONTEND_URL and FRONTEND_URL not in CORS_ALLOWED_ORIGINS:
-    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
+if not DEBUG and FRONTEND_URL:
+    clean_frontend_url = clean_origin_url(FRONTEND_URL)
+    if clean_frontend_url and clean_frontend_url not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(clean_frontend_url)
 
 # Configuración de correo electrónico
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
