@@ -89,13 +89,64 @@ ASGI_APPLICATION = 'martial_arts_api.asgi.application'
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 
 if DATABASE_URL:
-    # Parsear DATABASE_URL (formato: postgresql://user:password@host:port/dbname)
-    import re
-    match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', DATABASE_URL)
-    if match:
-        db_user, db_password, db_host, db_port, db_name = match.groups()
+    # Parsear DATABASE_URL usando urlparse para manejar mejor los casos edge
+    from urllib.parse import urlparse, parse_qs, unquote
+    
+    try:
+        parsed = urlparse(DATABASE_URL)
+        
+        # Extraer componentes
+        db_user = unquote(parsed.username) if parsed.username else ''
+        db_password = unquote(parsed.password) if parsed.password else ''
+        db_host = parsed.hostname or ''
+        db_port = str(parsed.port) if parsed.port else '5432'
+        # El nombre de la base de datos está en el path, sin el '/' inicial
+        db_name = parsed.path.lstrip('/') if parsed.path else ''
+        # Si hay parámetros de query, parsearlos
+        params = parse_qs(parsed.query)
+        
+        # Limpiar el nombre de la base de datos (puede tener parámetros)
+        if '?' in db_name:
+            db_name = db_name.split('?')[0]
+        
+        # Detectar si es Supabase (requiere SSL)
+        is_supabase = 'supabase' in db_host.lower()
+        
+        # Configuración base
+        db_config = {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': db_name,
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
+        }
+        
+        # Configurar SSL para Supabase
+        if is_supabase:
+            db_config['OPTIONS'] = {
+                'sslmode': 'require',
+            }
+            # Si hay parámetros SSL en la URL, usarlos
+            if 'sslmode' in params:
+                db_config['OPTIONS']['sslmode'] = params['sslmode'][0]
+        
         DATABASES = {
-            'default': {
+            'default': db_config
+        }
+    except Exception as e:
+        # Si falla el parseo, intentar método antiguo como fallback
+        import re
+        match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', DATABASE_URL)
+        if match:
+            db_user, db_password, db_host, db_port, db_name = match.groups()
+            # Limpiar nombre de base de datos
+            if '?' in db_name:
+                db_name = db_name.split('?')[0]
+            
+            is_supabase = 'supabase' in db_host.lower()
+            
+            db_config = {
                 'ENGINE': 'django.db.backends.postgresql',
                 'NAME': db_name,
                 'USER': db_user,
@@ -103,19 +154,27 @@ if DATABASE_URL:
                 'HOST': db_host,
                 'PORT': db_port,
             }
-        }
-    else:
-        # Fallback a configuración por defecto
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': 'martial_arts_db',
-                'USER': 'martial_user',
-                'PASSWORD': 'abc12345',
-                'HOST': os.getenv('DB_HOST', 'localhost'),
-                'PORT': os.getenv('DB_PORT', '5432'),
+            
+            if is_supabase:
+                db_config['OPTIONS'] = {
+                    'sslmode': 'require',
+                }
+            
+            DATABASES = {
+                'default': db_config
             }
-        }
+        else:
+            # Fallback a configuración por defecto si no se puede parsear
+            DATABASES = {
+                'default': {
+                    'ENGINE': 'django.db.backends.postgresql',
+                    'NAME': 'martial_arts_db',
+                    'USER': 'martial_user',
+                    'PASSWORD': 'abc12345',
+                    'HOST': os.getenv('DB_HOST', 'localhost'),
+                    'PORT': os.getenv('DB_PORT', '5432'),
+                }
+            }
 else:
     # Configuración por defecto (desarrollo local)
     DATABASES = {
