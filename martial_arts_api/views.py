@@ -1,13 +1,37 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 import requests
 from django.conf import settings
 from django.utils.html import strip_tags
+from django.db import connection
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class HealthCheckView(APIView):
+    """
+    Vista de healthcheck para Railway y otros servicios de deployment.
+    Siempre devuelve 200 OK para indicar que el servidor está funcionando.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        # Verificar conexión a la base de datos
+        db_status = "connected"
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+        except Exception as e:
+            db_status = f"error: {str(e)}"
+        
+        return Response({
+            "status": "healthy",
+            "database": db_status,
+            "service": "martial_arts_api"
+        }, status=status.HTTP_200_OK)
 
 class DashboardView(APIView):
     """
