@@ -9,8 +9,21 @@ https://docs.djangoproject.com/en/5.1/howto/deployment/asgi/
 
 import os
 
-from django.core.asgi import get_asgi_application
-
+# IMPORTANTE: Configurar Django settings ANTES de cualquier importación de Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'martial_arts_api.settings')
 
-application = get_asgi_application()
+from django.core.asgi import get_asgi_application
+from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.auth import AuthMiddlewareStack
+
+from .routing import websocket_urlpatterns
+from notifications.middleware import JWTAuthMiddlewareStack
+
+django_asgi_app = get_asgi_application()
+
+application = ProtocolTypeRouter({
+    'http': django_asgi_app,
+    'websocket': JWTAuthMiddlewareStack(
+        URLRouter(websocket_urlpatterns)
+    ),
+})

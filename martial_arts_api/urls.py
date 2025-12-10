@@ -16,9 +16,28 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
+)
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+from .views import DashboardView
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="Martial Arts API",
+        default_version='v1',
+        description="Documentación de la API para la plataforma de gestión de artes marciales.",
+        terms_of_service="https://www.google.com/policies/terms/",
+        contact=openapi.Contact(email="estebandjs7@gmail.com"),
+        license=openapi.License(name="MIT License"),
+    ),
+    public=True,
+    permission_classes=(permissions.AllowAny,),
 )
 
 urlpatterns = [
@@ -32,4 +51,16 @@ urlpatterns = [
     path('api/resources/', include('resources.urls')),
     path('api/gallery/', include('gallery.urls')),
     path('api/performance/', include('performance.urls')),
+    path('api/contact/', include('contact.urls')),
+    path('api/', include('notifications.urls')),
+    path('api/dashboard/', DashboardView.as_view(), name='dashboard'),
+    path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
+
+# Configuración para servir archivos estáticos y media en desarrollo
+if settings.DEBUG:
+    from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+    urlpatterns += staticfiles_urlpatterns()
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

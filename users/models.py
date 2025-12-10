@@ -1,8 +1,25 @@
 from django.db import models
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser
+from .managers import CustomUserManager
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from contact.models import Academy
 
-# Create your models here.
-from django.db import models
-from django.contrib.auth.models import User
+class CustomUser(AbstractUser):
+    # Se elimina el campo username para usar el email como identificador único
+    username = None
+    email = models.EmailField(unique=True, blank=False, null=False)
+    first_name = models.CharField(max_length=50, blank=True, null=True)
+    last_name = models.CharField(max_length=50, blank=True, null=True)
+    
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []  # No se requieren otros campos obligatorios
+
+    objects = CustomUserManager()
+
+    def __str__(self):
+        return self.email
 
 class UserProfile(models.Model):
     ROLE_CHOICES = (
@@ -10,10 +27,29 @@ class UserProfile(models.Model):
         ('instructor', 'Instructor'),
         ('student', 'Student'),
     )
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    # Se elimina first_name y last_name, ya que están definidos en CustomUser
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='student')
-    belt_rank = models.CharField(max_length=50)  
-    dojo = models.CharField(max_length=100) 
+    belt_rank = models.ForeignKey(
+        'performance.BeltRank',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users',
+        verbose_name='Cinturón',
+        help_text='Cinturón actual del usuario'
+    )
+    dojo = models.ForeignKey(
+        Academy,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='students',
+        verbose_name='Academia',
+        help_text='Academia a la que pertenece el usuario'
+    )
+    is_exempt = models.BooleanField(default=False)
+    address = models.CharField(max_length=255, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
     age = models.IntegerField(blank=True, null=True)
@@ -29,5 +65,31 @@ class UserProfile(models.Model):
     last_updated = models.DateTimeField(auto_now=True)
     social_media_links = models.JSONField(blank=True, null=True)
     
+    class Meta:
+        indexes = [
+            models.Index(fields=['role']),  # Para filtrar usuarios por rol
+            models.Index(fields=['user', 'role']),  # Para consultas combinadas
+        ]
+    
     def __str__(self):
-        return self.user.username
+        return self.user.email
+
+# Señal para crear o actualizar el UserProfile automáticamente al crear o modificar un CustomUser
+@receiver(post_save, sender=CustomUser)
+def create_or_update_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+    else:
+        instance.userprofile.save()
+
+# Señal para crear la primera cuota cuando se crea un UserProfile con rol 'student'
+@receiver(post_save, sender=UserProfile)
+def create_first_payments_for_student(sender, instance, created, **kwargs):
+    if created and instance.role == 'student':
+        try:
+            # Importar aquí para evitar dependencias circulares
+            from payments.services import PaymentService
+            PaymentService.create_payments_for_remaining_year(instance.user)
+        except Exception as e:
+            # Log del error pero no fallar la creación del perfil
+            print(f"Error creating annual payments for student {instance.user.email}: {e}")
