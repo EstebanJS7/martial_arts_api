@@ -15,21 +15,15 @@ class HealthCheckView(APIView):
     """
     Vista de healthcheck para Railway y otros servicios de deployment.
     Siempre devuelve 200 OK para indicar que el servidor está funcionando.
+    No verifica la base de datos para responder rápidamente.
     """
     permission_classes = [AllowAny]
     
     def get(self, request):
-        # Verificar conexión a la base de datos
-        db_status = "connected"
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1")
-        except Exception as e:
-            db_status = f"error: {str(e)}"
-        
+        # Respuesta simple y rápida para healthcheck
+        # No verificamos DB aquí para evitar timeouts
         return Response({
             "status": "healthy",
-            "database": db_status,
             "service": "martial_arts_api"
         }, status=status.HTTP_200_OK)
 
