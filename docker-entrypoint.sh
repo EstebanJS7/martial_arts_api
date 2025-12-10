@@ -60,6 +60,24 @@ else
 fi
 
 echo "Iniciando servidor..."
+
+# Expandir $PORT en los argumentos (Railway pasa $PORT como literal)
+# Railway inyecta $PORT como variable de entorno, pero cuando se pasa como argumento
+# al script, viene como literal "$PORT", así que lo expandimos aquí
+if [ -n "$PORT" ]; then
+    expanded_args=()
+    for arg in "$@"; do
+        # Reemplazar $PORT con el valor real
+        case "$arg" in
+            *\$PORT*)
+                arg=$(echo "$arg" | sed "s/\$PORT/$PORT/g")
+                ;;
+        esac
+        expanded_args+=("$arg")
+    done
+    set -- "${expanded_args[@]}"
+fi
+
 exec "$@"
 
 
