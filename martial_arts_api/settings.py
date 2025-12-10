@@ -26,6 +26,28 @@ else:
     # En desarrollo, permitir localhost
     ALLOWED_HOSTS = ['localhost', '127.0.0.1'] if DEBUG else []
 
+# Agregar automáticamente dominios de Railway si se detecta que estamos en Railway
+# Django no soporta wildcards directamente, así que usamos una validación dinámica
+if not DEBUG:
+    # Detectar si estamos en Railway
+    is_railway = (
+        os.getenv('RAILWAY_ENVIRONMENT') is not None or
+        os.getenv('RAILWAY_SERVICE_NAME') is not None or
+        'railway.app' in str(ALLOWED_HOSTS_ENV).lower()
+    )
+    
+    if is_railway or not ALLOWED_HOSTS_ENV:
+        # Agregar automáticamente healthcheck.railway.app (dominio interno de Railway)
+        # El dominio principal debe agregarse en la variable de entorno ALLOWED_HOSTS en Railway
+        railway_domains = [
+            'healthcheck.railway.app',  # Dominio interno de Railway para healthchecks
+        ]
+        
+        for domain in railway_domains:
+            if domain not in ALLOWED_HOSTS:
+                ALLOWED_HOSTS.append(domain)
+                ALLOWED_HOSTS.append(domain)
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
