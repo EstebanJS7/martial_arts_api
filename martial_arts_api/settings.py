@@ -112,16 +112,6 @@ if DATABASE_URL:
         # Detectar si es Supabase (requiere SSL)
         is_supabase = 'supabase' in db_host.lower()
         
-        # Si es Supabase y usa el puerto 5432, cambiar al pooler (6543) para evitar problemas IPv6
-        if is_supabase and db_port == '5432':
-            # El pooler de Supabase usa el puerto 6543 y es más compatible con Railway
-            # Cambiar el host de db.xxx.supabase.co a db.xxx.supabase.co (mismo host)
-            # pero usar el pooler en el puerto 6543
-            db_port = '6543'
-            # El pooler requiere el parámetro pgbouncer=true
-            if 'pgbouncer' not in params:
-                params['pgbouncer'] = ['true']
-        
         # Configuración base
         db_config = {
             'ENGINE': 'django.db.backends.postgresql',
@@ -136,7 +126,6 @@ if DATABASE_URL:
         if is_supabase:
             db_config['OPTIONS'] = {
                 'sslmode': 'require',
-                'connect_timeout': 10,
             }
             # Si hay parámetros SSL en la URL, usarlos
             if 'sslmode' in params:
@@ -157,10 +146,6 @@ if DATABASE_URL:
             
             is_supabase = 'supabase' in db_host.lower()
             
-            # Si es Supabase y usa el puerto 5432, cambiar al pooler (6543)
-            if is_supabase and db_port == '5432':
-                db_port = '6543'
-            
             db_config = {
                 'ENGINE': 'django.db.backends.postgresql',
                 'NAME': db_name,
@@ -173,7 +158,6 @@ if DATABASE_URL:
             if is_supabase:
                 db_config['OPTIONS'] = {
                     'sslmode': 'require',
-                    'connect_timeout': 10,
                 }
             
             DATABASES = {
