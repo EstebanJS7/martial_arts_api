@@ -32,22 +32,10 @@ class HealthCheckMiddleware(MiddlewareMixin):
     
     def __call__(self, request):
         """Método __call__ para compatibilidad con ASGI/WSGI"""
-        # Este método se ejecuta para cada petición
-        logger.info(f"[__call__] ===== MIDDLEWARE EJECUTÁNDOSE ===== path='{request.path}', method='{request.method}'")
-        
-        # Intentar interceptar aquí directamente
-        path = request.path
-        if path == '/health' or path == '/health/':
-            logger.info(f"[__call__] INTERCEPTANDO DIRECTAMENTE: {path}")
-            return JsonResponse({
-                "status": "healthy",
-                "service": "martial_arts_api"
-            }, status=200)
-        
-        # Si no interceptamos, continuar con el flujo normal
-        response = super().__call__(request)
-        logger.info(f"[__call__] Respuesta: path='{request.path}', status={response.status_code}")
-        return response
+        # El middleware ASGI ya maneja /health/, así que este middleware solo sirve como respaldo
+        # No necesitamos interceptar aquí porque el middleware ASGI lo hace antes
+        # Con ASGI, super().__call__ devuelve una coroutine, así que solo lo pasamos
+        return super().__call__(request)
     
     def process_request(self, request):
         try:

@@ -15,6 +15,10 @@ import sys
 # IMPORTANTE: Configurar Django settings ANTES de cualquier importación de Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'martial_arts_api.settings')
 
+# Obtener DEBUG de settings después de configurar el módulo
+from django.conf import settings as django_settings
+DEBUG = getattr(django_settings, 'DEBUG', False)
+
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.auth import AuthMiddlewareStack
@@ -46,39 +50,62 @@ class HealthCheckASGIMiddleware:
         logger.info("HealthCheckASGIMiddleware inicializado")
     
     async def __call__(self, scope, receive, send):
-        # Solo procesar peticiones HTTP
-        if scope['type'] == 'http':
-            path = scope.get('path', '')
-            method = scope.get('method', '')
-            
-            logger.info(f"[ASGI] Petición recibida: path='{path}', method='{method}'")
-            
-            # Interceptar /health o /health/
-            if path == '/health' or path == '/health/':
-                logger.info(f"[ASGI] ✓ INTERCEPTANDO /health -> devolviendo 200 OK")
+        try:
+            # Solo procesar peticiones HTTP
+            if scope.get('type') == 'http':
+                path = scope.get('path', '')
+                method = scope.get('method', '')
                 
-                # Crear respuesta HTTP 200 directamente
-                response_body = json.dumps({
-                    "status": "healthy",
-                    "service": "martial_arts_api"
+                # Interceptar /health o /health/ (sin logs excesivos)
+                if path == '/health' or path == '/health/':
+                    logger.info(f"[ASGI] Interceptando /health -> 200 OK")
+                    
+                    # Crear respuesta HTTP 200 directamente
+                    response_body = json.dumps({
+                        "status": "healthy",
+                        "service": "martial_arts_api"
+                    }).encode('utf-8')
+                    
+                    await send({
+                        'type': 'http.response.start',
+                        'status': 200,
+                        'headers': [
+                            [b'content-type', b'application/json'],
+                            [b'content-length', str(len(response_body)).encode()],
+                        ],
+                    })
+                    await send({
+                        'type': 'http.response.body',
+                        'body': response_body,
+                    })
+                    return
+            
+            # Para todas las demás peticiones, continuar con el flujo normal
+            await self.app(scope, receive, send)
+        except Exception as e:
+            logger.error(f"[ASGI] ERROR en HealthCheckASGIMiddleware: {e}", exc_info=True)
+            # Si hay un error, intentar continuar con el flujo normal
+            try:
+                await self.app(scope, receive, send)
+            except Exception as e2:
+                logger.error(f"[ASGI] ERROR crítico: {e2}", exc_info=True)
+                # Devolver error 500
+                error_body = json.dumps({
+                    "error": "Internal Server Error",
+                    "detail": str(e2) if DEBUG else "An error occurred"
                 }).encode('utf-8')
-                
                 await send({
                     'type': 'http.response.start',
-                    'status': 200,
+                    'status': 500,
                     'headers': [
                         [b'content-type', b'application/json'],
-                        [b'content-length', str(len(response_body)).encode()],
+                        [b'content-length', str(len(error_body)).encode()],
                     ],
                 })
                 await send({
                     'type': 'http.response.body',
-                    'body': response_body,
+                    'body': error_body,
                 })
-                return
-        
-        # Para todas las demás peticiones, continuar con el flujo normal
-        await self.app(scope, receive, send)
 
 
 # Aplicar el middleware ASGI antes de Django
