@@ -44,6 +44,8 @@ urlpatterns = [
     # Healthcheck - el middleware lo intercepta primero, pero esta ruta sirve como respaldo
     path('health', health_check_view, name='health_check'),
     path('health/', health_check_view, name='health_check_slash'),
+    # Ruta raíz también como healthcheck alternativo
+    path('', health_check_view, name='root_health_check'),
     path('admin/', admin.site.urls),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

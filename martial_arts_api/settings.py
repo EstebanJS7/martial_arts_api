@@ -226,6 +226,9 @@ USE_I18N = True
 
 USE_TZ = True
 
+# APPEND_SLASH: True por defecto, pero el middleware maneja /health sin redirecciones
+APPEND_SLASH = True
+
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
