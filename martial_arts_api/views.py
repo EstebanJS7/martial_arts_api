@@ -15,18 +15,21 @@ import json
 logger = logging.getLogger(__name__)
 
 
-@no_append_slash
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def health_check_view(request):
     """
     Vista de healthcheck simple para Railway y otros servicios de deployment.
     Siempre devuelve 200 OK para indicar que el servidor está funcionando.
     Usa vista de función Django pura para evitar redirecciones del middleware.
     """
-    return JsonResponse({
+    # Marcar que no debe redirigir esta respuesta
+    response = JsonResponse({
         "status": "healthy",
         "service": "martial_arts_api"
     }, status=200)
+    # Prevenir cualquier redirección
+    response['Location'] = None
+    return response
 
 class DashboardView(APIView):
     """

@@ -41,6 +41,7 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    # Healthcheck - el middleware lo intercepta primero, pero esta ruta sirve como respaldo
     path('health', health_check_view, name='health_check'),
     path('health/', health_check_view, name='health_check_slash'),
     path('admin/', admin.site.urls),
