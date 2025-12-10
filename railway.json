@@ -1,15 +1,15 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "pip install -r requirements.txt && python manage.py collectstatic --noinput"
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "daphne -b 0.0.0.0 -p $PORT martial_arts_api.asgi:application",
+    "startCommand": "/app/docker-entrypoint.sh daphne -b 0.0.0.0 -p $PORT martial_arts_api.asgi:application",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
     "healthcheckPath": "/admin/",
-    "healthcheckTimeout": 100
+    "healthcheckTimeout": 200
   }
 }
 

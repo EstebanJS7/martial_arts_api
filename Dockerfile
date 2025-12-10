@@ -27,7 +27,8 @@ COPY . .
 
 # Copiar y hacer ejecutable el script de entrada
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+COPY docker-entrypoint.prod.sh /app/docker-entrypoint.prod.sh
+RUN chmod +x /app/docker-entrypoint.sh /app/docker-entrypoint.prod.sh
 
 # Crear directorio para archivos estáticos y media
 RUN mkdir -p /app/staticfiles /app/media
