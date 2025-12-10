@@ -8,7 +8,7 @@
     "startCommand": "/app/docker-entrypoint.sh daphne -b 0.0.0.0 -p $PORT martial_arts_api.asgi:application",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
-    "healthcheckPath": "/admin/",
+    "healthcheckPath": "/health/",
     "healthcheckTimeout": 200
   }
 }
