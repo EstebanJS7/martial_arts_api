@@ -26,6 +26,28 @@ class HealthCheckMiddleware(MiddlewareMixin):
     def __init__(self, get_response):
         super().__init__(get_response)
         logger.info("HealthCheckMiddleware inicializado correctamente")
+        logger.info(f"get_response type: {type(get_response)}")
+        # Guardar referencia para debug
+        self._get_response = get_response
+    
+    def __call__(self, request):
+        """Método __call__ para compatibilidad con ASGI/WSGI"""
+        # Este método se ejecuta para cada petición
+        logger.info(f"[__call__] ===== MIDDLEWARE EJECUTÁNDOSE ===== path='{request.path}', method='{request.method}'")
+        
+        # Intentar interceptar aquí directamente
+        path = request.path
+        if path == '/health' or path == '/health/':
+            logger.info(f"[__call__] INTERCEPTANDO DIRECTAMENTE: {path}")
+            return JsonResponse({
+                "status": "healthy",
+                "service": "martial_arts_api"
+            }, status=200)
+        
+        # Si no interceptamos, continuar con el flujo normal
+        response = super().__call__(request)
+        logger.info(f"[__call__] Respuesta: path='{request.path}', status={response.status_code}")
+        return response
     
     def process_request(self, request):
         try:
@@ -33,7 +55,7 @@ class HealthCheckMiddleware(MiddlewareMixin):
             normalized_path = path.rstrip('/')
             method = request.method
             
-            logger.info(f"process_request: path='{path}', normalized='{normalized_path}', method='{method}'")
+            logger.info(f"[process_request] path='{path}', normalized='{normalized_path}', method='{method}'")
             
             # Interceptar peticiones a /health o /health/ (con o sin barra final)
             if path == '/health' or path == '/health/' or normalized_path == '/health' or normalized_path == '':
