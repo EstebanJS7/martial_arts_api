@@ -59,6 +59,54 @@ else
   echo "Omitiendo collectstatic (SKIP_COLLECTSTATIC=true)"
 fi
 
+# Crear superusuario automáticamente si no existe (solo en producción)
+if [ -n "$DATABASE_URL" ] && ([[ "$DATABASE_URL" == *"supabase"* ]] || [[ "$DATABASE_URL" == *"railway"* ]] || [[ "$DATABASE_URL" == *"render"* ]]); then
+  echo "Verificando si existe un superusuario..."
+  # Verificar si existe algún superusuario
+  if ! python manage.py shell -c "from django.contrib.auth import get_user_model; User = get_user_model(); print('EXISTS' if User.objects.filter(is_superuser=True).exists() else 'NOT_EXISTS')" 2>/dev/null | grep -q "EXISTS"; then
+    echo "No se encontró ningún superusuario."
+    # Verificar si se proporcionaron las variables de entorno necesarias
+    if [ -n "$DJANGO_SUPERUSER_EMAIL" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
+      echo "Creando superusuario con email: $DJANGO_SUPERUSER_EMAIL"
+      # Intentar crear con createsuperuser primero
+      export DJANGO_SUPERUSER_EMAIL DJANGO_SUPERUSER_PASSWORD
+      python manage.py createsuperuser --noinput --email "$DJANGO_SUPERUSER_EMAIL" 2>/dev/null || {
+        # Si falla, crear directamente con el shell (más robusto)
+        python manage.py shell << PYEOF
+import os
+from django.contrib.auth import get_user_model
+User = get_user_model()
+email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
+password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
+if email and password:
+    if not User.objects.filter(email=email).exists():
+        User.objects.create_superuser(email=email, password=password)
+        print('Superusuario creado exitosamente')
+    else:
+        # Si existe, actualizar la contraseña
+        user = User.objects.get(email=email)
+        user.set_password(password)
+        user.is_staff = True
+        user.is_superuser = True
+        user.save()
+        print('Superusuario actualizado')
+else:
+    print('Variables de entorno no configuradas')
+PYEOF
+      }
+      echo "✓ Superusuario creado o verificado"
+    else
+      echo "⚠️  ADVERTENCIA: No se creó superusuario automáticamente."
+      echo "   Para crear uno automáticamente, configura las variables de entorno:"
+      echo "   - DJANGO_SUPERUSER_EMAIL"
+      echo "   - DJANGO_SUPERUSER_PASSWORD"
+      echo "   O crea uno manualmente con: python manage.py createsuperuser"
+    fi
+  else
+    echo "✓ Ya existe un superusuario en la base de datos"
+  fi
+fi
+
 echo "Iniciando servidor..."
 echo "[DEBUG] Verificando que el middleware esté disponible..."
 python -c "from martial_arts_api.middleware import HealthCheckMiddleware; print('✓ HealthCheckMiddleware disponible')" || echo "✗ ERROR: HealthCheckMiddleware no disponible"
