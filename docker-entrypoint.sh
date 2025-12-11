@@ -61,50 +61,85 @@ fi
 
 # Crear superusuario automáticamente si no existe (solo en producción)
 if [ -n "$DATABASE_URL" ] && ([[ "$DATABASE_URL" == *"supabase"* ]] || [[ "$DATABASE_URL" == *"railway"* ]] || [[ "$DATABASE_URL" == *"render"* ]]); then
-  echo "Verificando si existe un superusuario..."
-  # Verificar si existe algún superusuario
-  if ! python manage.py shell -c "from django.contrib.auth import get_user_model; User = get_user_model(); print('EXISTS' if User.objects.filter(is_superuser=True).exists() else 'NOT_EXISTS')" 2>/dev/null | grep -q "EXISTS"; then
-    echo "No se encontró ningún superusuario."
-    # Verificar si se proporcionaron las variables de entorno necesarias
-    if [ -n "$DJANGO_SUPERUSER_EMAIL" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
-      echo "Creando superusuario con email: $DJANGO_SUPERUSER_EMAIL"
-      # Intentar crear con createsuperuser primero
-      export DJANGO_SUPERUSER_EMAIL DJANGO_SUPERUSER_PASSWORD
-      python manage.py createsuperuser --noinput --email "$DJANGO_SUPERUSER_EMAIL" 2>/dev/null || {
-        # Si falla, crear directamente con el shell (más robusto)
-        python manage.py shell << PYEOF
+  echo "=========================================="
+  echo "Verificando creación de superusuario..."
+  echo "=========================================="
+  
+  # Verificar que la base de datos esté lista (las migraciones se ejecutaron)
+  echo "Verificando conexión a la base de datos..."
+  if ! python manage.py shell -c "from django.db import connection; connection.ensure_connection(); print('OK')" 2>/dev/null | grep -q "OK"; then
+    echo "⚠️  ADVERTENCIA: No se pudo conectar a la base de datos. Omitiendo creación de superusuario."
+    echo "   Asegúrate de que las migraciones se ejecutaron correctamente."
+  else
+    echo "✓ Conexión a la base de datos verificada"
+    
+    # Verificar si se proporcionaron las variables de entorno
+    if [ -z "$DJANGO_SUPERUSER_EMAIL" ] || [ -z "$DJANGO_SUPERUSER_PASSWORD" ]; then
+      echo "⚠️  ADVERTENCIA: Variables de entorno para superusuario no configuradas."
+      echo "   DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-NO CONFIGURADA}"
+      echo "   DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:+CONFIGURADA (oculta)} ${DJANGO_SUPERUSER_PASSWORD:-NO CONFIGURADA}"
+      echo "   Para crear uno automáticamente, configura estas variables en Railway."
+    else
+      echo "✓ Variables de entorno encontradas:"
+      echo "   Email: $DJANGO_SUPERUSER_EMAIL"
+      echo "   Password: [OCULTA]"
+      
+      # Crear superusuario directamente con shell de Python (más confiable)
+      echo "Creando/verificando superusuario..."
+      python manage.py shell << PYEOF
 import os
+import sys
 from django.contrib.auth import get_user_model
-User = get_user_model()
-email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
-password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
-if email and password:
-    if not User.objects.filter(email=email).exists():
-        User.objects.create_superuser(email=email, password=password)
-        print('Superusuario creado exitosamente')
-    else:
-        # Si existe, actualizar la contraseña
+
+try:
+    User = get_user_model()
+    email = os.environ.get('DJANGO_SUPERUSER_EMAIL', '').strip()
+    password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', '').strip()
+    
+    if not email or not password:
+        print('ERROR: Email o contraseña vacíos')
+        sys.exit(1)
+    
+    # Normalizar email
+    email = User.objects.normalize_email(email)
+    
+    # Verificar si el usuario ya existe
+    if User.objects.filter(email=email).exists():
         user = User.objects.get(email=email)
-        user.set_password(password)
+        # Actualizar para asegurar que sea superusuario
         user.is_staff = True
         user.is_superuser = True
+        user.set_password(password)
         user.save()
-        print('Superusuario actualizado')
-else:
-    print('Variables de entorno no configuradas')
+        print(f'✓ Superusuario existente actualizado: {email}')
+    else:
+        # Crear nuevo superusuario
+        User.objects.create_superuser(email=email, password=password)
+        print(f'✓ Superusuario creado exitosamente: {email}')
+    
+    # Verificar que se creó correctamente
+    user = User.objects.get(email=email)
+    if user.is_superuser and user.is_staff:
+        print(f'✓ Verificación: Superusuario {email} está activo y tiene permisos de administrador')
+    else:
+        print(f'⚠️  ADVERTENCIA: El usuario {email} existe pero no tiene permisos completos')
+        sys.exit(1)
+        
+except Exception as e:
+    print(f'ERROR al crear superusuario: {str(e)}')
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 PYEOF
-      }
-      echo "✓ Superusuario creado o verificado"
-    else
-      echo "⚠️  ADVERTENCIA: No se creó superusuario automáticamente."
-      echo "   Para crear uno automáticamente, configura las variables de entorno:"
-      echo "   - DJANGO_SUPERUSER_EMAIL"
-      echo "   - DJANGO_SUPERUSER_PASSWORD"
-      echo "   O crea uno manualmente con: python manage.py createsuperuser"
+      
+      if [ $? -eq 0 ]; then
+        echo "✓ Proceso de creación de superusuario completado"
+      else
+        echo "✗ ERROR: Falló la creación del superusuario. Revisa los logs arriba."
+      fi
     fi
-  else
-    echo "✓ Ya existe un superusuario en la base de datos"
   fi
+  echo "=========================================="
 fi
 
 echo "Iniciando servidor..."
