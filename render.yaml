@@ -1,23 +1,33 @@
 # Render.com Blueprint Configuration
-# Este archivo permite desplegar todos los servicios de una vez
 
-services:
-  # Backend Django API
-  - type: web
-    name: martial-arts-api
-    env: python
-    runtime: python-3.12
-    buildCommand: python3.12 -m pip install -r requirements.txt && python3.12 manage.py collectstatic --noinput
-    startCommand: python3.12 -m daphne -b 0.0.0.0 -p $PORT martial_arts_api.asgi:application
+envVarGroups:
+  - name: martial-arts-shared
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.7
       - key: SECRET_KEY
         generateValue: true
       - key: DEBUG
-        value: False
+        value: "False"
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+services:
+  - type: web
+    name: martial-arts-api
+    runtime: python
+    buildCommand: python3.12 -m pip install -r requirements.txt && python3.12 manage.py collectstatic --noinput
+    preDeployCommand: python3.12 manage.py migrate --noinput
+    startCommand: python3.12 -m daphne -b 0.0.0.0 -p $PORT martial_arts_api.asgi:application
+    healthCheckPath: /health/
+    envVars:
+      - fromGroup: martial-arts-shared
       - key: ALLOWED_HOSTS
-        value: martial-arts-api.onrender.com
+        value: your-backend.onrender.com
       - key: DATABASE_URL
         fromDatabase:
           name: martial-arts-db
@@ -25,37 +35,30 @@ services:
       - key: REDIS_URL
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CORS_ALLOWED_ORIGINS
-        value: https://martial-arts-frontend.onrender.com
+        value: https://your-frontend.vercel.app
       - key: FRONTEND_URL
-        value: https://martial-arts-frontend.onrender.com
+        value: https://your-frontend.vercel.app
 
-  # Celery Worker
   - type: worker
     name: martial-arts-celery-worker
-    env: python
-    runtime: python-3.12
+    runtime: python
     buildCommand: python3.12 -m pip install -r requirements.txt
     startCommand: python3.12 -m celery -A martial_arts_api worker --loglevel=info
     envVars:
-      - key: SECRET_KEY
-        fromService:
-          name: martial-arts-api
-          type: web
-          property: envVar
-          value: SECRET_KEY
+      - fromGroup: martial-arts-shared
       - key: DATABASE_URL
         fromDatabase:
           name: martial-arts-db
@@ -63,33 +66,26 @@ services:
       - key: REDIS_URL
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
 
-  # Celery Beat (Scheduler)
   - type: worker
     name: martial-arts-celery-beat
-    env: python
-    runtime: python-3.12
+    runtime: python
     buildCommand: python3.12 -m pip install -r requirements.txt
     startCommand: python3.12 -m celery -A martial_arts_api beat --loglevel=info
     envVars:
-      - key: SECRET_KEY
-        fromService:
-          name: martial-arts-api
-          type: web
-          property: envVar
-          value: SECRET_KEY
+      - fromGroup: martial-arts-shared
       - key: DATABASE_URL
         fromDatabase:
           name: martial-arts-db
@@ -97,33 +93,29 @@ services:
       - key: REDIS_URL
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           name: martial-arts-redis
-          type: redis
+          type: keyvalue
           property: connectionString
+
+  - type: keyvalue
+    name: martial-arts-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
 
 databases:
   - name: martial-arts-db
     plan: free
     databaseName: martial_arts_db
     user: martial_user
-
-# Redis Service
-services:
-  - type: redis
-    name: martial-arts-redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru
-
-
-
 
 
