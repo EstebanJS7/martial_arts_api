@@ -1,183 +1,101 @@
-# Script de Población de Datos de Prueba
+# Demo Seed Seguro
 
-Este script permite poblar la base de datos con datos de prueba realistas para facilitar el desarrollo y las pruebas del sistema.
-
-## Uso
-
-### Ejecutar dentro del contenedor Docker
+`populate_test_data` quedó desactualizado para un entorno productivo. Para demos realistas de tesis usá el nuevo comando seguro:
 
 ```bash
-# Entrar al contenedor
-docker compose exec web bash
-
-# Ejecutar el script con valores por defecto
-python manage.py populate_test_data
-
-# Ejecutar con opciones personalizadas
-python manage.py populate_test_data \
-  --users 100 \
-  --instructors 10 \
-  --classes 200 \
-  --blog 50 \
-  --resources 60 \
-  --gallery 15 \
-  --events 20 \
-  --exams 15
+python manage.py seed_demo_data
 ```
 
-### Ejecutar desde fuera del contenedor
+## Qué hace
+
+Genera o actualiza datos demo determinísticos para Paraguay, con foco en Ypané y Villeta:
+
+- 1 superadmin demo
+- 1 admin demo
+- 3 instructores demo
+- 24 a 30 estudiantes demo por defecto
+- 2 academias/sedes demo
+- 8 a 12 semanas de clases con pasado y futuro
+- reservas, asistencia y waitlist
+- pagos con estados variados y transacciones
+- eventos, exámenes, blog, recursos y mensajes de contacto
+- galería solo como metadata, sin subir archivos
+
+## Seguridad
+
+- No borra datos reales por defecto.
+- Usa emails determinísticos `*@demo.martial.local` para aislar usuarios demo.
+- `--reset-demo` elimina solamente datos demo creados por este comando.
+- Si `DEBUG=False`, el comando aborta salvo que se cumplan AMBAS condiciones:
+  - pasar `--allow-production`
+  - definir `ALLOW_DEMO_SEED=true`
+
+## Uso Local
 
 ```bash
-docker compose exec web python manage.py populate_test_data
+python manage.py seed_demo_data
+python manage.py seed_demo_data --reset-demo
+python manage.py seed_demo_data --students 24 --weeks 8
 ```
 
-## Opciones Disponibles
+Si corrés con Docker:
 
-| Opción | Descripción | Valor por defecto |
-|--------|-------------|-------------------|
-| `--users` | Número de estudiantes a crear | 50 |
-| `--instructors` | Número de instructores a crear | 5 |
-| `--classes` | Número de clases a crear | 100 |
-| `--blog` | Número de posts de blog a crear | 30 |
-| `--resources` | Número de recursos a crear | 40 |
-| `--gallery` | Número de galerías a crear | 10 |
-| `--events` | Número de eventos a crear | 15 |
-| `--exams` | Número de sesiones de examen a crear | 10 |
-| `--clear` | Eliminar todos los datos existentes antes de poblar | False |
-
-## Ejemplos de Uso
-
-### Población básica (valores por defecto)
 ```bash
-python manage.py populate_test_data
+docker compose exec web python manage.py seed_demo_data
+docker compose exec web python manage.py seed_demo_data --reset-demo
 ```
 
-### Población masiva para pruebas de rendimiento
+## Opciones
+
+| Opción | Descripción | Default |
+|---|---|---|
+| `--students` | Cantidad de estudiantes demo determinísticos | `30` |
+| `--instructors` | Cantidad de instructores demo determinísticos | `3` |
+| `--weeks` | Semanas de calendario a generar | `10` |
+| `--reset-demo` | Elimina solo datos demo antes de recrearlos | `False` |
+| `--allow-production` | Requerido con `DEBUG=False` y `ALLOW_DEMO_SEED=true` | `False` |
+
+## Credenciales Demo
+
+- Password demo para todas las cuentas creadas: `DemoSeed2026!`
+- Superadmin: `superadmin@demo.martial.local`
+- Admin: `admin.operations@demo.martial.local`
+- Instructores: `lorena.vera@demo.martial.local`, `miguel.ortega@demo.martial.local`, `noelia.ramirez@demo.martial.local`
+- Estudiantes: `student01.aldo.ayala@demo.martial.local` hasta `student30.ernesto.narvaez@demo.martial.local` según la cantidad elegida
+
+## Render Free Plan
+
+Render free no ofrece shell interactiva, así que la forma segura es disparar el comando en `preDeployCommand` de manera TEMPORAL y con doble gating.
+
+### Opción recomendada
+
+1. Definí temporalmente estas variables en el servicio web:
+   - `RUN_DEMO_SEED=true`
+   - `ALLOW_DEMO_SEED=true`
+2. Hacé un deploy manual.
+3. Verificá el resultado en logs.
+4. Volvé a dejar `RUN_DEMO_SEED=false` y `ALLOW_DEMO_SEED=false`.
+
+Con la configuración actualizada de `render.yaml`, el deploy hace esto:
+
 ```bash
-python manage.py populate_test_data \
-  --users 500 \
-  --instructors 20 \
-  --classes 1000 \
-  --blog 100 \
-  --resources 200 \
-  --gallery 30 \
-  --events 50 \
-  --exams 30
+python3.12 manage.py migrate --noinput
+if [ "$RUN_DEMO_SEED" = "true" ]; then
+  python3.12 manage.py seed_demo_data --allow-production
+fi
 ```
 
-### Limpiar y poblar desde cero
-```bash
-python manage.py populate_test_data --clear
-```
+## Notas
 
-### Población mínima para desarrollo rápido
-```bash
-python manage.py populate_test_data \
-  --users 10 \
-  --instructors 2 \
-  --classes 20 \
-  --blog 5 \
-  --resources 10 \
-  --gallery 3 \
-  --events 5 \
-  --exams 3
-```
-
-## Datos Creados
-
-El script crea los siguientes tipos de datos:
-
-### Usuarios
-- **1 Admin**: `admin@test.com` / `admin123`
-- **N Instructores**: `instructor1@test.com`, `instructor2@test.com`, etc. / `test123`
-- **N Estudiantes**: `student1@test.com`, `student2@test.com`, etc. / `test123`
-
-Cada usuario incluye:
-- Perfil completo con información personal
-- Cinturón aleatorio
-- Dojo asignado
-- Datos de contacto
-
-### Clases
-- Clases con diferentes tipos (regular, intensiva, privada, seminario, examen)
-- Diferentes niveles de dificultad
-- Reservas de estudiantes
-- Asistencias registradas (para clases pasadas)
-- Algunas clases canceladas (5%)
-
-### Blog
-- Posts con categorías y tags
-- Comentarios en los posts
-- Ratings (calificaciones) de los posts
-- Algunos posts destacados (20%)
-
-### Recursos
-- Diferentes tipos (video, documento, enlace, imagen)
-- Diferentes categorías y niveles
-- Tags asociados
-- Algunos recursos destacados (15%) y premium (20%)
-
-### Galerías
-- Galerías con múltiples elementos (imágenes/videos)
-- Descripciones asociadas
-
-### Eventos
-- Eventos con diferentes categorías
-- Participaciones de estudiantes
-- Resultados variados (1er lugar, 2do lugar, participación, etc.)
-- Algunos eventos verificados (70%)
-
-### Exámenes
-- Sesiones de examen para diferentes niveles de cinturón
-- Participantes asignados
-- Resultados con calificaciones por parámetros
-- Algunos exámenes calificados (70%)
-
-### Pagos
-- Los pagos se crean automáticamente cuando se crean estudiantes (mediante señales)
-- Configuración de cuota activa ($50, vencimiento día 10)
-
-## Notas Importantes
-
-1. **No elimina usuarios admin existentes**: El script no elimina usuarios superusuarios al usar `--clear`.
-
-2. **Datos realistas**: Los datos generados son variados y realistas, incluyendo:
-   - Nombres y apellidos españoles
-   - Fechas distribuidas en el pasado y futuro
-   - Relaciones coherentes entre entidades
-   - Estadísticas variadas (vistas, descargas, etc.)
-
-3. **Rendimiento**: Para grandes volúmenes de datos (más de 1000 registros), el proceso puede tardar varios minutos.
-
-4. **Relaciones**: El script mantiene la integridad referencial, asegurando que todas las relaciones entre modelos sean válidas.
-
-## Solución de Problemas
-
-### Error: "No such file or directory"
-Asegúrate de estar ejecutando el comando dentro del contenedor Docker o usando `docker compose exec`.
-
-### Error: "Database is locked"
-Espera a que otras operaciones de base de datos terminen antes de ejecutar el script.
-
-### Datos duplicados
-Usa la opción `--clear` para eliminar datos existentes antes de poblar nuevos datos.
-
-## Personalización
-
-Si necesitas modificar los datos generados, edita el archivo:
-```
-martial_arts_api/users/management/commands/populate_test_data.py
-```
-
-Puedes modificar las listas de datos de prueba al inicio del archivo:
-- `FIRST_NAMES`, `LAST_NAMES`: Nombres para usuarios
-- `DOJOS`: Nombres de dojos
-- `BELT_RANKS`: Rangos de cinturones
-- `CLASS_NAMES`: Nombres de clases
-- `BLOG_CATEGORIES`, `BLOG_TAGS`: Categorías y tags del blog
-- Y más...
+- El comando evita `GalleryItem` con archivos para no depender de media local ni de uploads frágiles.
+- Conserva catálogos compartidos como cinturones, disciplinas y parámetros de evaluación si ya existen.
+- Hay una señal existente que crea pagos al crear perfiles con rol default `student`; el seed limpia esos pagos en admins/instructores demo para no contaminar producción.
 
 
 
 
 
+## Advertencia sobre `RUN_DEMO_SEED` en Render
+
+- Setear `RUN_DEMO_SEED=true` sin `ALLOW_DEMO_SEED=true` hace que el predeploy falle intencionalmente: el comando bloquea seeds en producción si falta esa variable (es una salvaguarda de diseño, no un error).
+- Después de un deploy exitoso con seed, revertir ambas variables a `false` de inmediato para evitar reseeds accidentales en deploys siguientes.

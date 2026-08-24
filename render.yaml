@@ -21,7 +21,7 @@ services:
     name: martial-arts-api
     runtime: python
     buildCommand: python3.12 -m pip install -r requirements.txt && python3.12 manage.py collectstatic --noinput
-    preDeployCommand: python3.12 manage.py migrate --noinput
+    preDeployCommand: bash -lc 'python3.12 manage.py migrate --noinput && if [ "$RUN_DEMO_SEED" = "true" ]; then python3.12 manage.py seed_demo_data --allow-production; fi'
     startCommand: python3.12 -m daphne -b 0.0.0.0 -p $PORT martial_arts_api.asgi:application
     healthCheckPath: /health/
     envVars:
@@ -51,6 +51,10 @@ services:
         value: https://your-frontend.vercel.app
       - key: FRONTEND_URL
         value: https://your-frontend.vercel.app
+      - key: RUN_DEMO_SEED
+        value: "false"
+      - key: ALLOW_DEMO_SEED
+        value: "false"
 
   - type: worker
     name: martial-arts-celery-worker
@@ -117,5 +121,4 @@ databases:
     plan: free
     databaseName: martial_arts_db
     user: martial_user
-
 
