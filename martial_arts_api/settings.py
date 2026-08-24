@@ -276,6 +276,22 @@ if not REDIS_HOST or not REDIS_PORT:
     REDIS_HOST = REDIS_HOST or (parsed_redis.hostname or 'localhost')
     REDIS_PORT = REDIS_PORT or (parsed_redis.port or 6379)
 
+# Sanitizar REDIS_HOST de forma defensiva: algunos entornos (ej. Render) quedan
+# configurados con un valor que incluye esquema ("https://host"), lo que rompe
+# la resolución DNS ("Name or service not known"). Se remueve cualquier esquema
+# y restos de barra final, ruta de BD o ":puerto".
+REDIS_HOST = str(REDIS_HOST).strip()
+for _scheme_prefix in ('https://', 'http://', 'rediss://', 'redis://'):
+    if REDIS_HOST.startswith(_scheme_prefix):
+        REDIS_HOST = REDIS_HOST[len(_scheme_prefix):]
+        break
+REDIS_HOST = REDIS_HOST.split('/', 1)[0]
+if ':' in REDIS_HOST:
+    _host_without_port, _, _port_suffix = REDIS_HOST.rpartition(':')
+    if _port_suffix.isdigit() and _host_without_port:
+        REDIS_HOST = _host_without_port
+REDIS_HOST = REDIS_HOST.strip()
+
 REDIS_PORT = int(REDIS_PORT)
 
 USE_I18N = True
@@ -328,11 +344,20 @@ SIMPLE_JWT = {
 }
 
 # Configuración de Celery
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', f'redis://{REDIS_HOST}:{REDIS_PORT}/0')
+# El default se construye desde REDIS_URL para conservar su esquema (incluye
+# rediss:// para proveedores con TLS como Upstash) y sus credenciales si las
+# tiene, forzando la BD /0 del broker/backend. Si la URL no trae esquema, se
+# cae al par (host, puerto) saneado.
+if REDIS_URL.startswith(('redis://', 'rediss://')):
+    _celery_redis_url = urlparse(REDIS_URL)
+    _celery_default_url = f'{_celery_redis_url.scheme}://{_celery_redis_url.netloc}/0'
+else:
+    _celery_default_url = f'redis://{REDIS_HOST}:{REDIS_PORT}/0'
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', _celery_default_url)
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', f'redis://{REDIS_HOST}:{REDIS_PORT}/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', _celery_default_url)
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 
@@ -538,14 +563,27 @@ STORAGES = {
 
 # Para desarrollo, usar InMemoryChannelLayer si Redis no está disponible
 # Para producción, usar RedisChannelLayer
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [(REDIS_HOST, REDIS_PORT)],
-        },
+# Preferir la forma de URL completa: si REDIS_URL ya trae esquema redis:// o
+# rediss:// se usa tal cual (rediss:// habilita TLS, requerido por Upstash);
+# solo se recurre al par (host, puerto) cuando la URL no tiene esquema.
+if REDIS_URL.startswith(('redis://', 'rediss://')):
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [REDIS_URL],
+            },
+        }
     }
-}
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [(REDIS_HOST, REDIS_PORT)],
+            },
+        }
+    }
 
 # Fallback a InMemoryChannelLayer si Redis no está disponible (solo para desarrollo)
 # Descomentar si Redis no está disponible:

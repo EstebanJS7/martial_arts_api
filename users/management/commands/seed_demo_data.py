@@ -8,6 +8,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.test.utils import override_settings
 from django.utils import timezone
 
 from blog.models import BlogPost, Category, Comment, Rating, Tag
@@ -240,28 +241,35 @@ class Command(BaseCommand):
         self.validate_options(options)
         self.assert_safe_environment(options)
 
-        with transaction.atomic():
-            if options["reset_demo"]:
-                self.reset_demo_data()
+        # Crear reservas dispara señales en tiempo real (group_send); forzar un
+        # channel layer en memoria para que un Redis ausente o inalcanzable no
+        # pueda tumbar el comando durante el seed. Se restaura el valor original
+        # al salir del bloque.
+        with override_settings(
+            CHANNEL_LAYERS={'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
+        ):
+            with transaction.atomic():
+                if options["reset_demo"]:
+                    self.reset_demo_data()
 
-            academies = self.seed_academies()
-            belts = self.seed_belt_ranks()
-            disciplines = self.seed_disciplines()
-            evaluation_parameters = self.seed_evaluation_parameters()
-            quota = self.ensure_quota_config()
-            users = self.seed_users(academies, belts, options["students"], options["instructors"])
-            self.seed_notification_preferences(users["all"])
-            templates = self.seed_class_templates(users["instructors"], academies)
-            classes = self.seed_classes(users["instructors"], academies, options["weeks"])
-            self.seed_reservations_attendance_waitlist(classes, users["students"], users["instructors"])
-            self.seed_payments(users["students"], quota)
-            events = self.seed_events(users, disciplines)
-            self.seed_exam_sessions(users, belts, evaluation_parameters)
-            self.seed_blog(users)
-            self.seed_resources(users)
-            self.seed_gallery()
-            self.seed_contact_messages()
-            self.refresh_performance_stats(users["students"])
+                academies = self.seed_academies()
+                belts = self.seed_belt_ranks()
+                disciplines = self.seed_disciplines()
+                evaluation_parameters = self.seed_evaluation_parameters()
+                quota = self.ensure_quota_config()
+                users = self.seed_users(academies, belts, options["students"], options["instructors"])
+                self.seed_notification_preferences(users["all"])
+                templates = self.seed_class_templates(users["instructors"], academies)
+                classes = self.seed_classes(users["instructors"], academies, options["weeks"])
+                self.seed_reservations_attendance_waitlist(classes, users["students"], users["instructors"])
+                self.seed_payments(users["students"], quota)
+                events = self.seed_events(users, disciplines)
+                self.seed_exam_sessions(users, belts, evaluation_parameters)
+                self.seed_blog(users)
+                self.seed_resources(users)
+                self.seed_gallery()
+                self.seed_contact_messages()
+                self.refresh_performance_stats(users["students"])
 
         self.print_summary(users, classes, templates, events)
 
