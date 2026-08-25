@@ -1,11 +1,12 @@
 from datetime import date, datetime
 from decimal import Decimal
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
+from django.db import transaction as db_transaction
 from django.db.models import Q, Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
 from users.throttling import SensitiveEndpointThrottle
@@ -23,10 +24,11 @@ from .serializers import (
     PaymentMethodDistributionSerializer,
     PaymentStatsSerializer
 )
-from .services import PaymentService, PaymentDashboardService
+from .services import PaymentService, PaymentDashboardService, generate_next_receipt_number
 from users.models import CustomUser
 from .utils import create_next_month_payment
 from .filters import PaymentFilter
+from .export_service import generate_receipt_pdf
 from rest_framework.generics import ListAPIView
 from .serializers import PaymentTransactionSerializer
 import logging
@@ -66,11 +68,35 @@ class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     serializer_class = PaymentSerializer
     permission_classes = [permissions.IsAdminUser]
-    
+
     def get_queryset(self):
         return Payment.objects.select_related('user').prefetch_related(
             'transactions'
         )
+
+    def perform_update(self, serializer):
+        """
+        Actualiza el pago y registra una transacción de auditoría cuando cambia
+        el monto de la cuota (modificación manual), dejando constancia de quién
+        la registró, método y referencia del comprobante si se proporcionan.
+        """
+        previous_amount = serializer.instance.amount
+        payment = serializer.save()
+        amount_delta = payment.amount - previous_amount
+
+        if amount_delta != 0:
+            payment_method = self.request.data.get('payment_method') or None
+            reference_number = self.request.data.get('reference_number') or None
+            with db_transaction.atomic():
+                PaymentTransaction.objects.create(
+                    payment=payment,
+                    amount=amount_delta,
+                    description=f"Ajuste manual del monto de la cuota (monto previo: {previous_amount})",
+                    payment_method=payment_method,
+                    reference_number=reference_number,
+                    registered_by=self.request.user if self.request.user.is_authenticated else None,
+                    receipt_number=generate_next_receipt_number(),
+                )
 
 
 class PaymentCreateView(generics.CreateAPIView):
@@ -169,6 +195,7 @@ class ApplyUserPaymentView(APIView):
     def post(self, request, user_id, payment_amount):
         # Validar mediante serializer que el monto es positivo
         payment_method = request.data.get('payment_method')
+        reference_number = request.data.get('reference_number')
         description = request.data.get('description')
         serializer = PaymentApplySerializer(data={
             "user_id": user_id,
@@ -190,7 +217,9 @@ class ApplyUserPaymentView(APIView):
             user,
             serializer.validated_data["payment_amount"],
             payment_method=payment_method,
-            description=description
+            description=description,
+            registered_by=request.user if request.user.is_authenticated else None,
+            reference_number=reference_number
         )
         data = {
             "status": "success",
@@ -457,3 +486,32 @@ class PaymentReportView(APIView):
                 {'detail': f'Error al generar el reporte: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+# -------------------------------
+# Endpoint para descargar el recibo en PDF de un pago
+# -------------------------------
+
+class PaymentReceiptPDFView(APIView):
+    """
+    Devuelve el recibo en PDF del pago solicitado.
+    Acceso: administradores e instructores, o el estudiante dueño del pago.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, payment_id):
+        try:
+            payment = Payment.objects.select_related('user').get(pk=payment_id)
+        except Payment.DoesNotExist:
+            return Response({"detail": "Pago no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        requester_role = getattr(getattr(user, 'userprofile', None), 'role', None)
+        is_admin_or_instructor = user.is_staff or requester_role in ('admin', 'instructor')
+        if payment.user_id != user.id and not is_admin_or_instructor:
+            return Response(
+                {"detail": "No tienes permiso para descargar este recibo."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        return generate_receipt_pdf(payment)

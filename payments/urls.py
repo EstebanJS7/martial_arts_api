@@ -9,6 +9,7 @@ from .views import (
     check_user_due_status_view,
     UserPaymentListView,
     PaymentTransactionListView,
+    PaymentReceiptPDFView,
     PaymentDashboardView,
     PaymentStatsView,
     PaymentTrendsView,
@@ -44,4 +45,7 @@ urlpatterns = [
     
     # Endpoint para obtener las transacciones de un pago específico (al final, después de rutas específicas)
     path('<int:payment_id>/transactions/', PaymentTransactionListView.as_view(), name='payment-transactions'),
+
+    # Endpoint para descargar el recibo en PDF de un pago
+    path('<int:payment_id>/receipt.pdf', PaymentReceiptPDFView.as_view(), name='payment-receipt-pdf'),
 ]

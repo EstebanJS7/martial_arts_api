@@ -32,6 +32,11 @@ class BeltRank(models.Model):
     order_number = models.IntegerField(unique=True, verbose_name='Número de Orden', 
                                        help_text='Número único que indica el orden del cinturón (1=Blanco, 2=Naranja, etc.)')
     category = models.CharField(max_length=10, choices=CATEGORY_CHOICES, verbose_name='Categoría')
+    required_classes = models.IntegerField(null=True, blank=True, default=20,
+                                           verbose_name='Clases Requeridas',
+                                           help_text='Clases mínimas asistidas en el rango actual '
+                                                     'requeridas para habilitar el examen del siguiente '
+                                                     'cinturón (por defecto 20)')
     is_active = models.BooleanField(default=True, verbose_name='Activo')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Fecha de Creación')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Fecha de Actualización')

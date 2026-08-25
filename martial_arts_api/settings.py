@@ -370,8 +370,13 @@ CELERY_BEAT_SCHEDULE = {
     },
     # Generar cuotas mensuales el día 1 de cada mes
     'generar-cuotas-mensuales': {
-        'task': 'payments.tasks.generate_monthly_payments_task',
-        'schedule': crontab(minute=0, hour=8, day_of_month=1),  # Día 1 de cada mes a las 08:00
+        'task': 'payments.tasks.generate_monthly_quotas',
+        'schedule': crontab(minute=5, hour=6, day_of_month=1),  # Día 1 de cada mes a las 06:05
+    },
+    # Marcar pagos vencidos diariamente (antes de las notificaciones)
+    'marcar-pagos-vencidos': {
+        'task': 'payments.tasks.mark_overdue_payments',
+        'schedule': crontab(minute=45, hour=6),  # Todos los días a las 06:45
     },
     # Enviar recordatorios de clases cada 15 minutos
     'send-class-reminders': {
@@ -383,10 +388,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'payments.tasks.notify_overdue_payments',
         'schedule': crontab(minute=0, hour=9),  # Todos los días a las 09:00
     },
-    # Notificar pagos próximos a vencer diariamente
-    'notify-upcoming-payments': {
-        'task': 'payments.tasks.notify_upcoming_payments',
-        'schedule': crontab(minute=0, hour=9),  # Todos los días a las 09:00
+    # Recordar pagos que vencen en 3 días, diariamente
+    'recordar-pagos-por-vencer': {
+        'task': 'payments.tasks.remind_upcoming_due_payments',
+        'schedule': crontab(minute=15, hour=9),  # Todos los días a las 09:15
     },
     # Generar reporte mensual (se ejecuta diariamente, pero solo genera reporte el último día del mes)
     'generate-monthly-report': {

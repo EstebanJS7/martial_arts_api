@@ -1,10 +1,15 @@
 # views.py
+from datetime import timedelta
+import datetime
+
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Prefetch, Q
+from django.contrib.auth import get_user_model
+from django.db.models import OuterRef, Prefetch, Q, Subquery
 from .models import (
+    BeltRank,
     EvaluationParameter,
     ExamSession,
     ExamResult,
@@ -27,6 +32,8 @@ from .serializers import (
 from users.permissions import IsAdminUser, IsInstructorUser  # Se asume que existen
 from martial_arts_api.pagination import StandardResultsSetPagination, SmallResultsSetPagination
 from django.utils import timezone
+
+User = get_user_model()
 
 # --- Endpoints para EvaluationParameter ---
 
@@ -523,3 +530,228 @@ class EventCategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return EventCategory.objects.all()
+
+
+# --- Endpoints de retención y progreso ---
+
+def _get_belt_progress(user):
+    """
+    Calcula el progreso de un usuario hacia el siguiente cinturón.
+
+    Semántica elegida para 'classes_at_rank' (documentada):
+    - No se trackea la fecha en que se asignó el cinturón (UserProfile.belt_rank
+      es solo una FK sin fecha de asignación), por lo que se usa como proxy la
+      fecha del último examen aprobado del usuario (ExamResult con graded=True
+      y passed=True, la misma condición con la que update_user_belt promueve el
+      cinturón). Si el usuario nunca aprobó un examen, se cuenta todo su
+      historial de asistencias (conteo all-time).
+    - Solo cuentan las asistencias reales: ClassAttendance.attended=True en
+      clases pasadas y no canceladas (misma semántica que
+      PerformanceStatistics.update_statistics).
+    - El requisito aplicable es el del cinturón actual; si el usuario aún no
+      tiene cinturón, se usa el del primer cinturón activo (su próximo
+      objetivo). Si el cinturón no define required_classes (None) o es <= 0,
+      se cae al default del modelo (20) para evitar división por cero.
+    """
+    # Import local para evitar dependencias entre apps al cargar módulos.
+    from classes.models import ClassAttendance
+
+    now = timezone.now()
+    profile = getattr(user, 'userprofile', None)
+    current_belt = profile.belt_rank if profile else None
+
+    # Próximo cinturón: menor order_number mayor al actual; si no tiene
+    # cinturón, el primero activo.
+    if current_belt:
+        next_belt = current_belt.get_next_belt()
+    else:
+        next_belt = BeltRank.objects.filter(is_active=True).order_by('order_number').first()
+
+    requirement_belt = current_belt or next_belt
+    required_classes = requirement_belt.required_classes if requirement_belt else None
+    if not required_classes or required_classes <= 0:
+        required_classes = 20
+
+    # Asistencias reales del usuario (presente, clase pasada y no cancelada)
+    attendances = ClassAttendance.objects.filter(
+        user=user,
+        attended=True,
+        class_reserved__is_cancelled=False,
+        class_reserved__date__lt=now,
+    )
+
+    # Proxy de la fecha de asignación del cinturón actual: último examen aprobado
+    last_passed_date = ExamResult.objects.filter(
+        participant=user,
+        graded=True,
+        passed=True,
+        exam_session__exam_date__isnull=False,
+    ).order_by('-exam_session__exam_date').values('exam_session__exam_date')[:1]
+
+    if current_belt and last_passed_date:
+        # Cuenta solo clases asistidas desde (incluida) la fecha de ese examen
+        attendances = attendances.filter(
+            class_reserved__date__date__gte=last_passed_date[0]['exam_session__exam_date']
+        )
+    # Sin cinturón asignado o sin exámenes aprobados: conteo all-time
+
+    classes_at_rank = attendances.count()
+
+    # Porcentaje acotado a 100; protegido contra división por cero porque
+    # required_classes siempre queda normalizado a > 0.
+    eligibility_percent = min(100.0, round((classes_at_rank / required_classes) * 100, 1))
+    # Equivalente a eligibility_percent >= 100, pero sin falsos positivos por
+    # redondeo flotante (comparación entera exacta).
+    eligible_for_exam = classes_at_rank >= required_classes
+
+    return {
+        'current_belt': (
+            {'id': current_belt.id, 'name': current_belt.name, 'order_number': current_belt.order_number}
+            if current_belt else None
+        ),
+        'next_belt': {'id': next_belt.id, 'name': next_belt.name} if next_belt else None,
+        'classes_at_rank': classes_at_rank,
+        'required_classes': required_classes,
+        'eligibility_percent': eligibility_percent,
+        'eligible_for_exam': eligible_for_exam,
+    }
+
+
+class MyProgressView(APIView):
+    """
+    Progreso hacia el próximo cinturón del usuario autenticado.
+    Los estudiantes consultan su propio progreso; admin e instructores pueden
+    inspeccionar el de cualquier usuario vía ?user_id=<id>.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        user_id = request.query_params.get('user_id')
+
+        if user_id:
+            # Solo admin/instructor puede inspeccionar a otros usuarios
+            # (mismo criterio que IsAdminUser: superuser/staff también pasan)
+            role = getattr(getattr(request.user, 'userprofile', None), 'role', None)
+            is_privileged = request.user.is_superuser or request.user.is_staff
+            if role not in ('admin', 'instructor') and not is_privileged:
+                raise ValidationError({'error': 'No tenés permiso para consultar el progreso de otro usuario'})
+            try:
+                user = User.objects.get(pk=user_id)
+            except (User.DoesNotExist, ValueError, TypeError):
+                raise ValidationError({'error': 'Usuario no encontrado'})
+
+        return Response(_get_belt_progress(user))
+
+
+class AtRiskStudentsView(APIView):
+    """
+    Estudiantes activos en riesgo de deserción (solo admin/instructores).
+    Se considera en riesgo a quien:
+      - Su última asistencia real fue hace más de ?days días (default 30), o
+      - Nunca asistió y se registró hace más de 30 días (date_joined).
+    Respuesta ordenada de la asistencia más antigua a la más reciente;
+    quienes nunca asistieron van primero.
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+
+    def get(self, request):
+        # Import local para evitar dependencias entre apps al cargar módulos.
+        from classes.models import ClassAttendance
+
+        try:
+            days = int(request.query_params.get('days', 30))
+        except (TypeError, ValueError):
+            raise ValidationError({'error': 'El parámetro days debe ser un número entero'})
+
+        now = timezone.now()
+        attendance_threshold = now - timedelta(days=days)
+        registration_cutoff = now - timedelta(days=30)
+
+        # Última asistencia real por alumno resuelta en una sola subconsulta
+        last_attendance_sq = ClassAttendance.objects.filter(
+            user=OuterRef('pk'),
+            attended=True,
+            class_reserved__is_cancelled=False,
+            class_reserved__date__lt=now,
+        ).order_by('-class_reserved__date').values('class_reserved__date')[:1]
+
+        students = User.objects.filter(
+            is_active=True,
+            userprofile__role='student',
+        ).select_related('userprofile__belt_rank').annotate(
+            last_attendance=Subquery(last_attendance_sq),
+        )
+
+        rows = []
+        for student in students:
+            last_attendance = student.last_attendance
+            if last_attendance is None:
+                # Nunca asistió: en riesgo solo si se registró hace más de 30 días
+                if student.date_joined >= registration_cutoff:
+                    continue
+            elif last_attendance >= attendance_threshold:
+                continue
+
+            full_name = f"{student.first_name or ''} {student.last_name or ''}".strip()
+            rows.append({
+                '_last': last_attendance,
+                'user_id': student.id,
+                'name': full_name or student.email,
+                'email': student.email,
+                'belt_name': student.userprofile.belt_rank.name if student.userprofile.belt_rank else None,
+            })
+
+        # Orden oldest-first; los que nunca asistieron quedan al principio
+        epoch = datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+        rows.sort(key=lambda row: row['_last'] or epoch)
+
+        results = [
+            {
+                'user_id': row['user_id'],
+                'name': row['name'],
+                'email': row['email'],
+                'belt_name': row['belt_name'],
+                'last_attendance_date': row['_last'].isoformat() if row['_last'] else None,
+            }
+            for row in rows
+        ]
+
+        return Response({'count': len(results), 'results': results})
+
+
+class ExamEligibleStudentsView(APIView):
+    """
+    Estudiantes activos que ya cumplen el requisito de clases para rendir
+    examen al siguiente cinturón (solo admin/instructores).
+    Reutiliza exactamente el criterio de /my-progress/ (eligible_for_exam).
+    """
+    permission_classes = [IsAdminUser | IsInstructorUser]
+
+    def get(self, request):
+        students = User.objects.filter(
+            is_active=True,
+            userprofile__role='student',
+        ).select_related('userprofile__belt_rank')
+
+        results = []
+        for student in students:
+            progress = _get_belt_progress(student)
+            if not progress['eligible_for_exam']:
+                continue
+
+            full_name = f"{student.first_name or ''} {student.last_name or ''}".strip()
+            results.append({
+                'user_id': student.id,
+                'name': full_name or student.email,
+                'email': student.email,
+                'current_belt': progress['current_belt']['name'] if progress['current_belt'] else None,
+                'next_belt': progress['next_belt']['name'] if progress['next_belt'] else None,
+                'classes_at_rank': progress['classes_at_rank'],
+                'required_classes': progress['required_classes'],
+            })
+
+        # Correctitud primero: se reutiliza el cálculo compartido por alumno;
+        # las consultas por alumno quedan acotadas porque perfil y cinturón ya
+        # vienen cargados vía select_related.
+        return Response({'count': len(results), 'results': results})

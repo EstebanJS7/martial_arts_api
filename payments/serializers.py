@@ -1,5 +1,7 @@
+from django.db import transaction as db_transaction
 from rest_framework import serializers
 from .models import Payment, QuotaConfig, PaymentTransaction, PaymentStats
+from .services import generate_next_receipt_number
 
 class PaymentSerializer(serializers.ModelSerializer):
     payment_method = serializers.CharField(source='transactions.first.payment_method', read_only=True)
@@ -13,38 +15,50 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
     Serializer específico para crear pagos desde el frontend.
     No requiere due_date ya que se calcula automáticamente en el modelo.
     """
-    payment_method = serializers.CharField(write_only=True)
+    payment_method = serializers.ChoiceField(
+        choices=PaymentTransaction.PAYMENT_METHOD_CHOICES,
+        write_only=True
+    )
     external_transaction_id = serializers.CharField(write_only=True, required=False)
-    
+    reference_number = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
     class Meta:
         model = Payment
-        fields = ['user', 'amount', 'description', 'payment_method', 'external_transaction_id']
-        
+        fields = ['user', 'amount', 'description', 'payment_method', 'external_transaction_id', 'reference_number']
+
     def create(self, validated_data):
         # Extraer datos que no pertenecen al modelo Payment
         payment_method = validated_data.pop('payment_method', None)
         external_transaction_id = validated_data.pop('external_transaction_id', None)
-        
-        # Crear el pago (due_date se calcula automáticamente en el modelo)
+        reference_number = validated_data.pop('reference_number', None)
+
+        # Crear el pago (due_date y período se calculan automáticamente en el modelo)
         payment = Payment.objects.create(**validated_data)
-        
-        # Crear la transacción asociada si se proporcionó información adicional
+
+        # Crear la transacción asociada si se proporcionó información adicional,
+        # registrando quién la cargó (auditoría) y su número de recibo secuencial
         if payment_method or external_transaction_id:
-            transaction = PaymentTransaction.objects.create(
-                payment=payment,
-                amount=payment.amount,
-                payment_method=payment_method,
-                external_transaction_id=external_transaction_id,
-                description=payment.description
-            )
-            
+            request = self.context.get('request')
+            registered_by = getattr(request, 'user', None)
+            with db_transaction.atomic():
+                transaction_obj = PaymentTransaction.objects.create(
+                    payment=payment,
+                    amount=payment.amount,
+                    payment_method=payment_method,
+                    external_transaction_id=external_transaction_id,
+                    reference_number=reference_number or None,
+                    registered_by=registered_by if getattr(registered_by, 'is_authenticated', False) else None,
+                    description=payment.description,
+                    receipt_number=generate_next_receipt_number(),
+                )
+
             # Si la transacción es por el monto completo del pago, marcar el pago como pagado
-            if transaction.amount >= payment.amount:
+            if transaction_obj.amount >= payment.amount:
                 payment.amount_paid = payment.amount
                 payment.is_paid = True
                 payment.is_fully_paid = True
                 payment.save()
-        
+
         return payment
 
 

@@ -479,3 +479,116 @@ class PaymentExportService:
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
+
+# ========== Recibos de pago ==========
+
+def generate_receipt_pdf(payment):
+    """
+    Genera el recibo en PDF de un pago y lo devuelve como HttpResponse.
+
+    Incluye: encabezado de la academia (placeholder), datos del estudiante,
+    período, monto pagado, método, referencia, número de recibo, fecha y
+    quién registró la transacción.
+    """
+    from django.utils.timezone import localtime
+
+    # Última transacción con recibo; si no tiene, la última transacción disponible
+    transaction_obj = (
+        payment.transactions.filter(receipt_number__isnull=False)
+        .exclude(receipt_number='')
+        .order_by('-transaction_date')
+        .first()
+        or payment.transactions.order_by('-transaction_date').first()
+    )
+
+    receipt_number = (
+        getattr(transaction_obj, 'receipt_number', None)
+        or f'PAGO-{payment.id}'
+    )
+    issued_at = (
+        localtime(transaction_obj.transaction_date)
+        if transaction_obj else timezone.now()
+    )
+    amount_paid = (
+        transaction_obj.amount if transaction_obj else payment.amount_paid
+    )
+    method_display = ''
+    if transaction_obj and transaction_obj.payment_method:
+        method_choices = dict(PaymentTransaction.PAYMENT_METHOD_CHOICES)
+        method_display = method_choices.get(
+            transaction_obj.payment_method, transaction_obj.payment_method
+        )
+    reference = (
+        (getattr(transaction_obj, 'reference_number', None)
+         or getattr(transaction_obj, 'external_transaction_id', None))
+        if transaction_obj else None
+    )
+    registered_by = (
+        transaction_obj.registered_by.get_full_name() or transaction_obj.registered_by.email
+        if transaction_obj and transaction_obj.registered_by else '-'
+    )
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, top_margin=0.6*inch, bottom_margin=0.6*inch)
+    story = []
+    styles = getSampleStyleSheet()
+
+    # Encabezado de la academia (placeholder configurable más adelante)
+    header_style = ParagraphStyle(
+        'AcademyHeader',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#1e40af'),
+        alignment=1,
+        spaceAfter=2,
+    )
+    subtitle_style = ParagraphStyle(
+        'AcademySubtitle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.grey,
+        alignment=1,
+        spaceAfter=14,
+    )
+    story.append(Paragraph("Academia de Artes Marciales", header_style))
+    story.append(Paragraph("Comprobante oficial de pago", subtitle_style))
+
+    story.append(Paragraph(f"RECIBO N° {receipt_number}", styles['Heading2']))
+    story.append(Spacer(1, 0.15*inch))
+
+    receipt_data = [
+        ['Fecha de emisión:', issued_at.strftime('%d/%m/%Y %H:%M')],
+        ['Alumno:', payment.user.get_full_name() or payment.user.email],
+        ['Período:', payment.period or payment.due_date.strftime('%Y-%m')],
+        ['Vencimiento:', payment.due_date.strftime('%d/%m/%Y')],
+        ['Monto pagado:', f"${amount_paid:,.2f}"],
+        ['Método de pago:', method_display or '-'],
+        ['Referencia:', reference or '-'],
+        ['Registrado por:', registered_by],
+    ]
+    receipt_table = Table(receipt_data, colWidths=[1.8*inch, 3.7*inch])
+    receipt_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f3f4f6')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(receipt_table)
+
+    story.append(Spacer(1, 0.3*inch))
+    footer = Paragraph(
+        f"Este documento es el comprobante de tu pago. Generado el: {timezone.now().strftime('%d/%m/%Y %H:%M')}",
+        styles['Normal']
+    )
+    story.append(footer)
+
+    doc.build(story)
+    buffer.seek(0)
+
+    filename = f"recibo_{receipt_number}.pdf"
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return response
+

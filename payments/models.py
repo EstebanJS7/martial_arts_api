@@ -33,8 +33,13 @@ class Payment(models.Model):
     date_payment = models.DateTimeField(auto_now_add=True)
     description = models.CharField(max_length=255, blank=True, null=True)
     due_date = models.DateField()
+    # Período al que corresponde la cuota (formato 'YYYY-MM'). Permite idempotencia
+    # en la generación automática mensual (un solo pago por usuario y período).
+    period = models.CharField(max_length=7, help_text='Período de la cuota (YYYY-MM)')
     is_paid = models.BooleanField(default=False)
     is_fully_paid = models.BooleanField(default=False)
+    # Marcado automáticamente por la tarea diaria mark_overdue_payments
+    is_overdue = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         # Obtener la configuración de cuota activa actual
@@ -46,6 +51,9 @@ class Payment(models.Model):
             # Asignar el monto si no se especifica
             if not self.amount:
                 self.amount = current_quota.amount
+        # Derivar el período desde la fecha de vencimiento si no se proporcionó
+        if self.due_date and not self.period:
+            self.period = self.due_date.strftime('%Y-%m')
         # Si se marca como pago completo, forzamos amount_paid al monto total
         if self.is_fully_paid:
             self.amount_paid = self.amount
@@ -66,6 +74,7 @@ class Payment(models.Model):
             models.Index(fields=['user', 'is_fully_paid']),  # Para consultas de estado de pago por usuario
             models.Index(fields=['due_date']),  # Para ordenar por fecha de vencimiento
             models.Index(fields=['is_paid', 'is_fully_paid']),  # Para filtrar por estado de pago
+            models.Index(fields=['user', 'period']),  # Para idempotencia de generación mensual por usuario y período
         ]
 
     def __str__(self):
@@ -84,13 +93,44 @@ class PaymentTransaction(models.Model):
     """
     Registro de cada transacción de pago para auditoría y seguimiento.
     """
+    PAYMENT_METHOD_CHOICES = [
+        ('cash', 'Efectivo'),
+        ('transfer', 'Transferencia'),
+    ]
     payment = models.ForeignKey(Payment, related_name="transactions", on_delete=models.CASCADE)
     transaction_date = models.DateTimeField(auto_now_add=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.CharField(max_length=255, blank=True, null=True)
     # Información adicional para auditoría
-    payment_method = models.CharField(max_length=50, blank=True, null=True)
+    registered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='registered_transactions',
+        help_text='Usuario que registró la transacción'
+    )
+    payment_method = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        choices=PAYMENT_METHOD_CHOICES,
+        help_text='Método de pago (efectivo o transferencia)'
+    )
+    reference_number = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text='Número de comprobante/voucher (para transferencias)'
+    )
     external_transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    receipt_number = models.CharField(
+        max_length=20,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text='Número secuencial de recibo por año (formato RC-YYYY-NNNNNN)'
+    )
 
     class Meta:
         indexes = [

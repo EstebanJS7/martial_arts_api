@@ -1,11 +1,44 @@
 from decimal import Decimal
 from datetime import date, datetime, timedelta
+from django.db import transaction as db_transaction
 from django.db.models import Sum, Count, Q, Exists, OuterRef
 from .models import Payment, QuotaConfig, PaymentTransaction, PaymentStats
 
+
+def generate_next_receipt_number():
+    """
+    Genera el próximo número de recibo secuencial por año con formato 'RC-YYYY-NNNNNN'.
+    Debe invocarse dentro del mismo bloque atómico en que se crea la transacción:
+    usa select_for_update sobre las filas del año actual para serializar la asignación.
+    """
+    year = date.today().year
+    prefix = f'RC-{year}-'
+    with db_transaction.atomic():
+        last_receipt = (
+            PaymentTransaction.objects
+            .select_for_update()
+            .filter(receipt_number__startswith=prefix)
+            .order_by('-receipt_number')
+            .values_list('receipt_number', flat=True)
+            .first()
+        )
+        if last_receipt:
+            try:
+                sequence = int(last_receipt.rsplit('-', 1)[-1]) + 1
+            except (IndexError, ValueError):
+                # Recibo con formato inesperado: continuar desde la cantidad existente
+                sequence = PaymentTransaction.objects.filter(
+                    receipt_number__startswith=prefix
+                ).count() + 1
+        else:
+            sequence = 1
+        return f'{prefix}{sequence:06d}'
+
+
 class PaymentService:
     @classmethod
-    def apply_payment(cls, user, payment_amount, payment_method=None, description=None):
+    def apply_payment(cls, user, payment_amount, payment_method=None, description=None,
+                      registered_by=None, reference_number=None):
         payment_amount = Decimal(payment_amount)
         # Obtener pagos pendientes del usuario ordenados por fecha de vencimiento
         pending_payments = Payment.objects.filter(user=user, is_fully_paid=False).order_by('due_date')
@@ -19,22 +52,30 @@ class PaymentService:
                 payment.amount_paid = payment.amount
                 payment.is_paid = True
                 payment.is_fully_paid = True
-                PaymentTransaction.objects.create(
-                    payment=payment,
-                    amount=amount_needed,
-                    description=description or "Pago completado",
-                    payment_method=payment_method
-                )
+                with db_transaction.atomic():
+                    PaymentTransaction.objects.create(
+                        payment=payment,
+                        amount=amount_needed,
+                        description=description or "Pago completado",
+                        payment_method=payment_method,
+                        registered_by=registered_by,
+                        reference_number=reference_number,
+                        receipt_number=generate_next_receipt_number(),
+                    )
                 payment_amount -= amount_needed
             else:
                 # Pago parcial
                 payment.amount_paid += payment_amount
-                PaymentTransaction.objects.create(
-                    payment=payment,
-                    amount=payment_amount,
-                    description=description or "Pago parcial",
-                    payment_method=payment_method
-                )
+                with db_transaction.atomic():
+                    PaymentTransaction.objects.create(
+                        payment=payment,
+                        amount=payment_amount,
+                        description=description or "Pago parcial",
+                        payment_method=payment_method,
+                        registered_by=registered_by,
+                        reference_number=reference_number,
+                        receipt_number=generate_next_receipt_number(),
+                    )
                 payment_amount = Decimal(0)
                 if payment.amount_paid == payment.amount:
                     payment.is_paid = True

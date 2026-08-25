@@ -1081,6 +1081,25 @@ class ClassQRDataView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+def _get_student_payment_status(user):
+    """
+    Calcula el estado de morosidad de un estudiante a partir de sus pagos
+    vencidos no pagados completamente (usa la marca is_overdue mantenida por
+    la tarea diaria y, como resguardo, los vencidos por fecha). Informativo:
+    no bloquea el check-in.
+    """
+    from payments.models import Payment
+
+    today = timezone.now().date()
+    overdue_count = Payment.objects.filter(
+        user=user,
+        is_fully_paid=False,
+    ).filter(
+        Q(is_overdue=True) | Q(due_date__lt=today)
+    ).count()
+    return {'is_overdue': overdue_count > 0, 'overdue_count': overdue_count}
+
+
 class QRCheckInView(APIView):
     """
     Vista para validar un código QR y realizar check-in automático.
@@ -1105,6 +1124,9 @@ class QRCheckInView(APIView):
                 {"detail": result['error']},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Estado de morosidad del estudiante (campo aditivo e informativo)
+        result['payment_status'] = _get_student_payment_status(request.user)
         
         return Response(result, status=status.HTTP_200_OK)
 

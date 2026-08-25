@@ -20,6 +20,9 @@ from .views import (
     EventParticipationDetailView,
     EventParticipationVerifyView,
     MyEventParticipationsView,
+    MyProgressView,
+    AtRiskStudentsView,
+    ExamEligibleStudentsView,
 )
 from .belt_rank_views import BeltRankListView, BeltRankDetailView
 
@@ -48,6 +51,11 @@ urlpatterns = [
     
     # Endpoint para estadísticas de desempeño del usuario
     path('user-stats/', UserPerformanceStatsView.as_view(), name='user-performance-stats'),
+
+    # Endpoints de retención y progreso
+    path('my-progress/', MyProgressView.as_view(), name='my-progress'),
+    path('at-risk/', AtRiskStudentsView.as_view(), name='at-risk'),
+    path('exam-eligible/', ExamEligibleStudentsView.as_view(), name='exam-eligible'),
 
     # Endpoints para categorías de eventos (nuevo sistema dinámico)
     path('event-categories/', EventCategoryListCreateView.as_view(), name='event-category-list-create'),
