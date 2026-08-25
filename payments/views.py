@@ -9,7 +9,7 @@ from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
 from users.throttling import SensitiveEndpointThrottle
-from users.permissions import IsInstructorUser
+from users.permissions import IsAdminUser, IsInstructorUser
 
 from .models import Payment, QuotaConfig, PaymentTransaction
 from .serializers import (
@@ -251,11 +251,9 @@ class PaymentDashboardView(APIView):
     Vista para obtener datos del dashboard de pagos.
     Acceso solo para administradores e instructores.
     """
-    permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
-
-    def has_permission(self, request, view):
-        # Solo admin o instructor pueden acceder al dashboard
-        return request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor')
+    # Solo admin o instructor pueden acceder al dashboard (antes había un
+    # has_permission que DRF nunca invocaba; ahora vive en permission_classes)
+    permission_classes = [IsAdminUser | IsInstructorUser]
 
     def get(self, request):
         try:
@@ -331,10 +329,7 @@ class PaymentStatsView(APIView):
     Vista para obtener estadísticas mensuales de pagos.
     Acceso solo para administradores e instructores.
     """
-    permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
-
-    def has_permission(self, request, view):
-        return request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor')
+    permission_classes = [IsAdminUser | IsInstructorUser]
 
     def get(self, request):
         try:
@@ -379,10 +374,7 @@ class PaymentTrendsView(APIView):
     Vista para obtener tendencias de pagos.
     Acceso solo para administradores e instructores.
     """
-    permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
-
-    def has_permission(self, request, view):
-        return request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor')
+    permission_classes = [IsAdminUser | IsInstructorUser]
 
     def get(self, request):
         try:

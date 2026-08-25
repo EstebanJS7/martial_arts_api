@@ -1,5 +1,6 @@
 # views.py
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Prefetch, Q
@@ -387,21 +388,17 @@ class EventParticipationListCreateView(generics.ListCreateAPIView):
             return EventParticipation.objects.filter(user=user).order_by('-created_at')
 
     def perform_create(self, serializer):
+        # DRF ignora los valores retornados por perform_create: para bloquear la
+        # creación hay que lanzar ValidationError.
         # Verificar que el evento esté verificado
         event_id = self.request.data.get('event')
         try:
             event = Event.objects.get(pk=event_id)
-            if not event.is_verified:
-                return Response(
-                    {'error': 'Solo puedes participar en eventos verificados'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
         except Event.DoesNotExist:
-            return Response(
-                {'error': 'Evento no encontrado'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
+            raise ValidationError({'error': 'Evento no encontrado'})
+        if not event.is_verified:
+            raise ValidationError({'error': 'Solo puedes participar en eventos verificados'})
+
         serializer.save(user=self.request.user)
 
 class EventParticipationDetailView(generics.RetrieveUpdateDestroyAPIView):
