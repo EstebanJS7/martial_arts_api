@@ -26,16 +26,16 @@ class EvaluationParameterSerializer(serializers.ModelSerializer):
 # Serializador para cinturones
 class BeltRankSerializer(serializers.ModelSerializer):
     category_display = serializers.CharField(source='get_category_display', read_only=True)
-    
+
     class Meta:
         model = BeltRank
-        fields = ['id', 'name', 'order_number', 'category', 'category_display', 'is_active', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'order_number', 'required_classes', 'category', 'category_display', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
 class BeltRankCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = BeltRank
-        fields = ['name', 'order_number', 'category', 'is_active']
+        fields = ['name', 'order_number', 'required_classes', 'category', 'is_active']
 
 # Serializador para las puntuaciones en un resultado de examen
 class ExamResultParameterScoreSerializer(serializers.ModelSerializer):
