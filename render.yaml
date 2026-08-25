@@ -9,6 +9,8 @@ envVarGroups:
         value: "False"
       - key: PYTHON_VERSION
         value: 3.12.7
+      - key: TIME_ZONE
+        value: America/Asuncion
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

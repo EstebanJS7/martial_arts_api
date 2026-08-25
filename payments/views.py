@@ -186,10 +186,11 @@ def check_user_due_status_view(request, user_id):
 class ApplyUserPaymentView(APIView):
     """
     Aplica un pago a los pagos pendientes del usuario.
-    Se valida que el monto sea positivo y que el usuario autenticado tenga permisos
-    (debe ser el mismo usuario o tener privilegios de administrador).
+    Se valida que el monto sea positivo. El registro de pagos es una
+    operación administrativa: solo administradores e instructores pueden
+    aplicarlo (los estudiantes no pueden auto-aplicarse pagos).
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminUser | IsInstructorUser]
     throttle_classes = [SensitiveEndpointThrottle]
 
     def post(self, request, user_id, payment_amount):
@@ -208,10 +209,6 @@ class ApplyUserPaymentView(APIView):
             user = CustomUser.objects.get(id=user_id)
         except CustomUser.DoesNotExist:
             return Response({"detail": "Usuario no encontrado."}, status=status.HTTP_404_NOT_FOUND)
-
-        # Verificar que el usuario autenticado sea el mismo o tenga privilegios (admin)
-        if request.user != user and not request.user.is_staff:
-            return Response({"detail": "No tienes permiso para aplicar pagos a este usuario."}, status=status.HTTP_403_FORBIDDEN)
 
         remaining_amount = PaymentService.apply_payment(
             user,

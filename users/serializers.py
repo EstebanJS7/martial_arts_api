@@ -25,6 +25,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = '__all__'
+        # Campos sensibles que el dueño del perfil NO puede auto-modificar vía
+        # PATCH propio: la identidad, privilegios y datos de auditoría se gestionan
+        # por vías dedicadas (el rol se cambia solo con UpdateUserRoleView de admin).
+        read_only_fields = ('user', 'role', 'is_exempt', 'enrollment_date')
     
     def get_belt_rank_data(self, obj):
         """Retorna los datos completos del cinturón si existe"""
@@ -138,9 +142,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
     
 class UserSerializer(serializers.ModelSerializer):
+    """
+    Serializador seguro de CustomUser para listados de estudiantes
+    (InstructorStudentsView). Nunca usar fields='__all__' sobre el modelo de
+    usuario: expondría el hash de la contraseña y campos internos.
+    """
     class Meta:
         model = User
-        fields = '__all__'
+        fields = ('id', 'email', 'first_name', 'last_name', 'is_active')
 
 class CustomAuthTokenSerializer(serializers.Serializer):
     email = serializers.EmailField(label="Email")

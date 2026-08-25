@@ -10,14 +10,24 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from celery.schedules import crontab
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-s@@ksa+i2$#!^a-5r6hbxl-wvzxefn!&o)m8j#@s%h@_-oiyi=')
 
 # DEBUG: False por defecto en producción (más seguro)
 # Cambiar a True solo para desarrollo local
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+
+# SECRET_KEY obligatoria por entorno: si falta la variable y DEBUG=False se
+# aborta el arranque; solo en desarrollo (DEBUG=True) se permite un fallback
+# inseguro para facilitar el arranque local.
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            'SECRET_KEY must be set as an environment variable when DEBUG=False.'
+        )
+    SECRET_KEY = 'django-insecure-s@@ksa+i2$#!^a-5r6hbxl-wvzxefn!&o)m8j#@s%h@_-oiyi='
 
 # ALLOWED_HOSTS - Configuración desde variable de entorno o lista por defecto
 ALLOWED_HOSTS_ENV = os.getenv('ALLOWED_HOSTS', '')

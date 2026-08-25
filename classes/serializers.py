@@ -25,7 +25,11 @@ class ClassSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Class
-        fields = '__all__'
+        # Se excluye el token de check-in: exponerlo en listados permitiría a
+        # cualquier usuario autenticado falsificar un check-in remoto. El token
+        # solo se sirve vía los endpoints /qr-code/ y /qr-data/, restringidos
+        # a admin/instructor.
+        exclude = ('qr_code_token',)
         read_only_fields = (
             'reservation_count', 
             'attendance_count', 

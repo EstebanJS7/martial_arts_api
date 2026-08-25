@@ -1,6 +1,6 @@
 # views.py
 import logging
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import F, Count, Q
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
@@ -873,25 +873,35 @@ class ClassWaitlistCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Verificar que el usuario no esté ya en la lista de espera
+        # Verificar que el usuario no tenga ya una entrada ACTIVA en la lista
+        # de espera ('waiting' o 'notified'): la restricción unique_together de
+        # ClassWaitlist es por (user, class_reserved), así que reingresar con una
+        # entrada 'notified' vigente violaría la unicidad y provocaba un 500.
         existing_waitlist = ClassWaitlist.objects.filter(
             user=request.user,
             class_reserved=class_obj,
-            status='waiting'
+            status__in=['waiting', 'notified']
         ).first()
-        
+
         if existing_waitlist:
             return Response(
                 {'detail': 'Ya estás en la lista de espera para esta clase.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Crear la entrada en la lista de espera
-        waitlist_entry = ClassWaitlist.objects.create(
-            user=request.user,
-            class_reserved=class_obj,
-            status='waiting'
-        )
+
+        # Crear la entrada capturando IntegrityError: cubre la carrera entre
+        # peticiones concurrentes que cruzan la verificación anterior.
+        try:
+            waitlist_entry = ClassWaitlist.objects.create(
+                user=request.user,
+                class_reserved=class_obj,
+                status='waiting'
+            )
+        except IntegrityError:
+            return Response(
+                {'detail': 'No se pudo agregar a la lista de espera: ya existe un registro para esta clase.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         serializer = ClassWaitlistSerializer(waitlist_entry, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)

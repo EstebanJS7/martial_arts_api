@@ -186,37 +186,25 @@ class ExamResult(models.Model):
         """
         Valida si un usuario puede tomar un examen para un cinturón específico.
         Solo puede tomar examen para el siguiente cinturón después del suyo actual.
+        Compara directamente por la FK belt_rank y su order_number (los lookups
+        por nombre quedaron rotos tras la migración a ForeignKey).
         """
         try:
             user_profile = user.userprofile
-            current_belt_name = user_profile.belt_rank
-            
+            current_belt = user_profile.belt_rank
+
+            exam_belt = exam_session.belt_rank
+            if exam_belt is None:
+                return False
+
             # Si no tiene cinturón asignado, solo puede tomar el primer cinturón
-            if not current_belt_name or current_belt_name.strip() == '':
+            if current_belt is None:
                 first_belt = BeltRank.objects.filter(is_active=True).order_by('order_number').first()
-                if first_belt and first_belt.id == exam_session.belt_rank.id:
-                    return True
-                return False
-            
-            # Buscar el cinturón actual del usuario
-            try:
-                current_belt = BeltRank.objects.get(name=current_belt_name, is_active=True)
-            except BeltRank.DoesNotExist:
-                # Si el cinturón actual no existe en el sistema, permitir el examen
-                # (para compatibilidad con datos antiguos)
-                return True
-            
-            # El siguiente cinturón debe ser el del examen
+                return bool(first_belt and first_belt.id == exam_belt.id)
+
+            # El examen debe ser exactamente para el siguiente cinturón activo
             next_belt = current_belt.get_next_belt()
-            
-            if next_belt and next_belt.id == exam_session.belt_rank.id:
-                return True
-            
-            # Si el usuario ya tiene un cinturón igual o superior, no puede tomar el examen
-            if current_belt.order_number >= exam_session.belt_rank.order_number:
-                return False
-            
-            return False
+            return bool(next_belt and next_belt.id == exam_belt.id)
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)

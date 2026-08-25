@@ -66,20 +66,32 @@ class DashboardView(APIView):
         
         # 2. Obtener pagos del usuario
         try:
+            from datetime import date
+
             from payments.models import Payment
-            recent_payments = Payment.objects.filter(user=user).order_by('-payment_date')[:5]
-            
+            recent_payments = Payment.objects.filter(user=user).order_by('-date_payment')[:5]
+            today = date.today()
+
             payments_data = []
             for payment in recent_payments:
+                # Estado derivado de los campos reales del modelo Payment
+                # (el modelo no tiene concept/payment_date/status).
+                if payment.is_fully_paid:
+                    payment_status = 'paid'
+                elif payment.due_date and payment.due_date < today:
+                    payment_status = 'overdue'
+                else:
+                    payment_status = 'pending'
+
                 payments_data.append({
                     'id': payment.id,
-                    'concept': payment.concept,
+                    'concept': payment.description or f"Cuota {payment.period}",
                     'amount': float(payment.amount),
-                    'date': payment.payment_date.strftime('%Y-%m-%d'),
+                    'date': payment.date_payment.strftime('%Y-%m-%d'),
                     'dueDate': payment.due_date.strftime('%Y-%m-%d') if payment.due_date else None,
-                    'status': payment.status
+                    'status': payment_status
                 })
-            
+
             dashboard_data['payments'] = payments_data
         except Exception as e:
             logger.error(f"Error obteniendo pagos: {str(e)}")

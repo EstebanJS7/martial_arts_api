@@ -145,45 +145,41 @@ class UserPerformanceStatsView(APIView):
     def get(self, request):
         user = request.user
         
-        # Calcular el nivel de habilidad basándose en el cinturón del usuario
+        # Calcular el nivel de habilidad basándose en el cinturón del usuario.
+        # userprofile.belt_rank es una FK a BeltRank: se deriva el nivel de su
+        # categoría y order_number (los lookups por nombre quedaron rotos tras
+        # la migración a ForeignKey).
         skill_level = "Principiante"
         try:
-            user_profile = user.userprofile
-            belt_rank_name = user_profile.belt_rank
-            
-            if belt_rank_name:
-                # Buscar el cinturón en el modelo BeltRank
-                try:
-                    from .models import BeltRank
-                    belt_rank = BeltRank.objects.get(name=belt_rank_name, is_active=True)
-                    
-                    # Determinar nivel de habilidad basado en la categoría y orden del cinturón
-                    if belt_rank.category == 'Dan':
-                        # Para cinturones Dan, usar el número del Dan
-                        if '1°' in belt_rank_name or '1er' in belt_rank_name or '1' in belt_rank_name:
-                            skill_level = "Avanzado"
-                        elif '2°' in belt_rank_name or '2do' in belt_rank_name or '2' in belt_rank_name:
-                            skill_level = "Experto"
-                        elif '3°' in belt_rank_name or '3er' in belt_rank_name or '3' in belt_rank_name:
-                            skill_level = "Maestro"
-                        elif belt_rank.order_number >= 16:  # 4° Dan o superior
-                            skill_level = "Gran Maestro"
-                        else:
-                            skill_level = "Avanzado"
-                    elif belt_rank.category == 'Kyu B':
-                        # Cinturones Kyu B son intermedios
-                        skill_level = "Intermedio"
-                    else:
-                        # Cinturones Kyu A son principiantes
-                        skill_level = "Principiante"
-                except BeltRank.DoesNotExist:
-                    # Si el cinturón no existe en el sistema, usar el nombre del cinturón como nivel
-                    if 'Negro' in belt_rank_name or 'Dan' in belt_rank_name:
+            belt_rank = user.userprofile.belt_rank
+            if belt_rank:
+                if belt_rank.category == 'Dan':
+                    # Para cinturones Dan se usa la posición relativa dentro de
+                    # la categoría: 1er Dan=Avanzado, 2°=Experto, 3°=Maestro y
+                    # 4° Dan o superior=Gran Maestro.
+                    first_dan_order = (
+                        BeltRank.objects.filter(category='Dan', is_active=True)
+                        .order_by('order_number')
+                        .values_list('order_number', flat=True)
+                        .first()
+                    )
+                    dan_offset = belt_rank.order_number - (
+                        first_dan_order if first_dan_order is not None else belt_rank.order_number
+                    )
+                    if dan_offset <= 0:
                         skill_level = "Avanzado"
-                    elif any(color in belt_rank_name for color in ['Azul', 'Marrón', 'Rojo']):
-                        skill_level = "Intermedio"
+                    elif dan_offset == 1:
+                        skill_level = "Experto"
+                    elif dan_offset == 2:
+                        skill_level = "Maestro"
                     else:
-                        skill_level = "Principiante"
+                        skill_level = "Gran Maestro"
+                elif belt_rank.category == 'Kyu B':
+                    # Cinturones Kyu B son intermedios
+                    skill_level = "Intermedio"
+                else:
+                    # Cinturones Kyu A son principiantes
+                    skill_level = "Principiante"
         except Exception:
             skill_level = "Principiante"
         
