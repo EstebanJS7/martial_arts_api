@@ -20,6 +20,8 @@ from .forms import EmailAuthenticationForm
 from payments.models import Payment
 import logging
 from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.core.mail import send_mail
@@ -249,6 +251,21 @@ class PasswordResetConfirmView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
+            # Validar la nueva contraseña contra la política del proyecto
+            # (AUTH_PASSWORD_VALIDATORS) antes de aplicarla.
+            try:
+                validate_password(password, user=user)
+            except DjangoValidationError as exc:
+                password_errors = list(exc.messages)
+                return Response(
+                    {
+                        'success': False,
+                        'message': ' '.join(password_errors),
+                        'password': password_errors,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             # Actualizar la contraseña
             user.set_password(password)
             user.save()
@@ -292,7 +309,22 @@ class ChangePasswordView(APIView):
                 {'success': False, 'message': 'La contraseña actual es incorrecta'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
+        
+        # Validar la nueva contraseña contra la política del proyecto
+        # (AUTH_PASSWORD_VALIDATORS) antes de aplicarla.
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as exc:
+            password_errors = list(exc.messages)
+            return Response(
+                {
+                    'success': False,
+                    'message': ' '.join(password_errors),
+                    'password': password_errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         user.set_password(new_password)
         user.save()
         

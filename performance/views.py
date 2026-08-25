@@ -180,25 +180,35 @@ class UserPerformanceStatsView(APIView):
         except Exception:
             skill_level = "Principiante"
         
-        # Obtener estadísticas de asistencia
-        # Suponemos que hay un modelo que registra la asistencia a clases
-        from classes.models import UserClassReservation
-        
-        # Total de clases a las que ha asistido
-        attended_classes = UserClassReservation.objects.filter(
+        # Estadísticas de asistencia basadas en registros reales de asistencia
+        # (ClassAttendance), no en reservas: tener una reserva no implica haber
+        # asistido.
+        from classes.models import Class, ClassAttendance
+
+        now = timezone.now()
+
+        # Clases realmente asistidas: registros marcados como presente por el
+        # instructor, en clases pasadas y no canceladas.
+        attended_classes = ClassAttendance.objects.filter(
             user=user,
+            attended=True,
+            class_reserved__is_cancelled=False,
+            class_reserved__date__lt=now,
+        ).count()
+
+        # Total de clases relevantes: clases pasadas no canceladas donde el
+        # estudiante tenía una reserva activa O tiene registro de asistencia
+        # (reservó => se esperaba su asistencia; el registro puede faltar si el
+        # instructor no cargó la lista, pero la clase igualmente evaluable).
+        total_classes = Class.objects.filter(
             is_cancelled=False,
-            class_reserved__date__lt=timezone.now().date()
-        ).count()
+            date__lt=now,
+        ).filter(
+            Q(userclassreservation__user=user, userclassreservation__is_cancelled=False)
+            | Q(attendances__user=user)
+        ).distinct().count()
         
-        # Total de clases programadas en el pasado
-        from classes.models import Class
-        total_classes = UserClassReservation.objects.filter(
-            user=user,
-            class_reserved__date__lt=timezone.now().date()
-        ).count()
-        
-        # Calcular tasa de asistencia
+        # Calcular tasa de asistencia (protegida contra división por cero)
         attendance_rate = 0
         if total_classes > 0:
             attendance_rate = (attended_classes / total_classes) * 100

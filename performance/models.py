@@ -1,6 +1,7 @@
 # models.py
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from datetime import timedelta
 
 # Modelo para representar disciplinas (ya existente en performance)
@@ -246,11 +247,22 @@ class PerformanceStatistics(models.Model):
 
     def update_statistics(self):
         """
-        Actualiza las estadísticas basadas en reservas de clases, exámenes (ExamSession)
-        y participaciones en eventos.
+        Actualiza las estadísticas basadas en asistencias reales a clases,
+        exámenes (ExamSession) y participaciones en eventos.
         """
-        # Ejemplo: suponiendo que userclassreservation_set provenga de otro módulo.
-        self.classes_attended = self.user.userclassreservation_set.count()
+        # Import local para evitar dependencias entre apps al cargar módulos.
+        from classes.models import ClassAttendance
+
+        # Asistencia real: registros ClassAttendance marcados como presentes por
+        # el instructor, en clases pasadas y no canceladas. Antes se contaban
+        # reservas activas (UserClassReservation), lo que inflaba la tasa cerca
+        # del 100% aunque el alumno faltara a la clase.
+        self.classes_attended = ClassAttendance.objects.filter(
+            user=self.user,
+            attended=True,
+            class_reserved__is_cancelled=False,
+            class_reserved__date__lt=timezone.now(),
+        ).count()
         # Para exámenes y eventos se sincroniza la relación many-to-many
         self.belt_exams.set(self.user.exam_sessions.all())
         self.event_participations.set(self.user.event_participations.all())
