@@ -182,8 +182,8 @@ def resource_stats_view(request):
     
     # Calcular estadísticas
     total_resources = Resource.objects.count()
-    total_views = Resource.objects.aggregate(total=models.Sum('views_count'))['total'] or 0
-    total_downloads = Resource.objects.aggregate(total=models.Sum('downloads_count'))['total'] or 0
+    total_views = Resource.objects.aggregate(total=Sum('views_count'))['total'] or 0
+    total_downloads = Resource.objects.aggregate(total=Sum('downloads_count'))['total'] or 0
     featured_resources = Resource.objects.filter(is_featured=True).count()
     
     # Recursos por tipo

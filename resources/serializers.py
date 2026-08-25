@@ -15,8 +15,8 @@ class ResourceAuthorSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'name']
-    
+        fields = ['id', 'email', 'first_name', 'last_name', 'name']
+
     def get_name(self, obj):
         if obj.first_name and obj.last_name:
             return f"{obj.first_name} {obj.last_name}"
@@ -24,8 +24,6 @@ class ResourceAuthorSerializer(serializers.ModelSerializer):
             return obj.first_name
         elif obj.last_name:
             return obj.last_name
-        elif obj.username:
-            return obj.username
         else:
             return obj.email.split('@')[0] if obj.email else "Usuario"
 
