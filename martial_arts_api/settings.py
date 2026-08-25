@@ -393,7 +393,16 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'payments.tasks.generate_monthly_report',
         'schedule': crontab(minute=0, hour=10, day_of_month='28,29,30,31'),  # Días 28-31 a las 10:00 (la tarea verifica si es el último día)
     },
+    # Expirar cupos notificados de lista de espera vencidos (cada hora)
+    'expire-notified-waitlist-entries': {
+        'task': 'classes.tasks.expire_stale_notified_waitlist_entries',
+        'schedule': crontab(minute=5),  # Cada hora en el minuto 5
+    },
 }
+
+# Lista de espera de clases: horas que tiene un usuario notificado para
+# convertir su cupo antes de que la entrada expire (default: 24 horas)
+WAITLIST_NOTIFIED_EXPIRY_HOURS = int(os.getenv('WAITLIST_NOTIFIED_EXPIRY_HOURS', '24'))
 
 # Configuración de CORS
 # En desarrollo, permitir todos los orígenes para facilitar el desarrollo

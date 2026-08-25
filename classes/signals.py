@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from django.utils import timezone
 
@@ -139,6 +139,20 @@ def class_reservation_count_changed(sender, instance: Class, **kwargs):
                 NotificationScheduler.send_class_cancellation_notifications(instance, cancellation_reason)
         except Class.DoesNotExist:
             pass
+
+
+@receiver(post_delete, sender=ClassWaitlist)
+def waitlist_entry_deleted(sender, instance: ClassWaitlist, **kwargs):
+    """
+    Cuando se elimina físicamente una entrada de lista de espera,
+    compacta las posiciones (1..N) de las entradas activas restantes.
+    """
+    class_obj_id = instance.class_reserved_id
+    if class_obj_id is None:
+        return
+    class_obj = Class.objects.filter(pk=class_obj_id).first()
+    if class_obj is not None:
+        ClassWaitlist.compact_positions(class_obj)
 
 
 def _notify_waitlist_availability(class_obj: Class):

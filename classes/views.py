@@ -930,17 +930,10 @@ class ClassWaitlistDeleteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Actualizar el estado a cancelado en lugar de eliminar
-        waitlist_entry.status = 'cancelled'
-        waitlist_entry.save()
-        
-        # Reorganizar posiciones de las entradas restantes
-        ClassWaitlist.objects.filter(
-            class_reserved=waitlist_entry.class_reserved,
-            status='waiting',
-            position__gt=waitlist_entry.position
-        ).update(position=F('position') - 1)
-        
+        # Actualizar el estado a cancelado y compactar las posiciones
+        # restantes (1..N) de la lista de espera
+        waitlist_entry.leave()
+
         return Response(
             {'detail': 'Entrada de lista de espera cancelada correctamente.'},
             status=status.HTTP_200_OK
@@ -977,50 +970,39 @@ class ClassWaitlistConvertView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        class_obj = waitlist_entry.class_reserved
-        
-        # Verificar que haya cupos disponibles
-        if class_obj.reservation_count >= class_obj.max_students:
-            return Response(
-                {'detail': 'Ya no hay cupos disponibles para esta clase.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Verificar que el usuario no tenga ya una reserva
-        if UserClassReservation.objects.filter(
-            user=request.user,
-            class_reserved=class_obj,
-            is_cancelled=False
-        ).exists():
-            return Response(
-                {'detail': 'Ya tienes una reserva para esta clase.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Crear la reserva
+        # Crear la reserva bajo bloqueo de fila de la clase (mismo patrón que
+        # UserClassReservationCreateView) para que conversiones concurrentes
+        # nunca superen la capacidad de la clase.
         with transaction.atomic():
+            class_obj = Class.objects.select_for_update().get(
+                pk=waitlist_entry.class_reserved_id
+            )
+
+            # Verificar que haya cupos disponibles (bajo bloqueo)
+            if class_obj.reservation_count >= class_obj.max_students:
+                raise ValidationError({'detail': 'Ya no hay cupos disponibles para esta clase.'})
+
+            # Verificar que el usuario no tenga ya una reserva
+            if UserClassReservation.objects.filter(
+                user=request.user,
+                class_reserved=class_obj,
+                is_cancelled=False
+            ).exists():
+                raise ValidationError({'detail': 'Ya tienes una reserva para esta clase.'})
+
+            # Crear la reserva
             reservation = UserClassReservation.objects.create(
                 user=request.user,
                 class_reserved=class_obj
             )
-            
-            # Actualizar el contador de reservas
-            class_obj.reservation_count = F('reservation_count') + 1
-            class_obj.save(update_fields=['reservation_count'])
-            class_obj.refresh_from_db()
-            
-            # Actualizar el estado de la entrada de lista de espera
-            waitlist_entry.status = 'converted'
-            waitlist_entry.converted_at = timezone.now()
-            waitlist_entry.save()
-            
-            # Reorganizar posiciones
-            ClassWaitlist.objects.filter(
-                class_reserved=class_obj,
-                status='waiting',
-                position__gt=waitlist_entry.position
-            ).update(position=F('position') - 1)
-        
+
+            # Actualizar el contador de reservas usando update para evitar problemas con F()
+            Class.objects.filter(pk=class_obj.pk).update(reservation_count=F('reservation_count') + 1)
+            class_obj.refresh_from_db(fields=['reservation_count'])
+
+            # Marcar la entrada como convertida y compactar posiciones restantes
+            waitlist_entry.mark_converted()
+
         return Response(
             {
                 'detail': 'Reserva creada correctamente desde la lista de espera.',

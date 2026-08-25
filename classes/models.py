@@ -1,5 +1,6 @@
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
+from django.utils import timezone
 from datetime import timedelta
 
 class Class(models.Model):
@@ -303,11 +304,56 @@ class ClassWaitlist(models.Model):
         return f'{self.user.email} - {self.class_reserved.name} (Posición {self.position})'
 
     def save(self, *args, **kwargs):
-        # Si es un nuevo registro y no tiene posición asignada, asignar la siguiente posición disponible
-        if not self.pk and not self.position:
-            max_position = ClassWaitlist.objects.filter(
-                class_reserved=self.class_reserved,
-                status='waiting'
-            ).aggregate(models.Max('position'))['position__max']
-            self.position = (max_position or 0) + 1
+        # Si es un nuevo registro, asignar la siguiente posición disponible.
+        # Se computa max+1 entre las entradas activas ('waiting' y 'notified')
+        # porque ambas ocupan un lugar en la cola hasta convertirse o cancelarse.
+        # El bloqueo sobre la fila de la clase serializa altas concurrentes
+        # y garantiza posiciones únicas y consecutivas por clase.
+        if self._state.adding and self.class_reserved_id is not None:
+            with transaction.atomic():
+                Class.objects.select_for_update().get(pk=self.class_reserved_id)
+                max_position = ClassWaitlist.objects.filter(
+                    class_reserved_id=self.class_reserved_id,
+                    status__in=['waiting', 'notified']
+                ).aggregate(models.Max('position'))['position__max']
+                self.position = (max_position or 0) + 1
+                super().save(*args, **kwargs)
+            return
         super().save(*args, **kwargs)
+
+    @classmethod
+    def compact_positions(cls, class_obj):
+        """
+        Compacta las posiciones (1..N) de las entradas activas de una clase,
+        preservando el orden relativo por posición, fecha de alta e id.
+        """
+        with transaction.atomic():
+            active_entries = list(
+                cls.objects.filter(
+                    class_reserved=class_obj,
+                    status__in=['waiting', 'notified'],
+                ).order_by('position', 'joined_at', 'id')
+            )
+            for new_position, entry in enumerate(active_entries, start=1):
+                if entry.position != new_position:
+                    cls.objects.filter(pk=entry.pk).update(position=new_position)
+            return len(active_entries)
+
+    def leave(self):
+        """
+        Cancela la entrada de lista de espera y compacta las posiciones
+        restantes de su clase.
+        """
+        self.status = 'cancelled'
+        self.save(update_fields=['status', 'updated_at'])
+        return self.compact_positions(self.class_reserved)
+
+    def mark_converted(self):
+        """
+        Marca la entrada como convertida a reserva y compacta las posiciones
+        restantes de su clase.
+        """
+        self.status = 'converted'
+        self.converted_at = timezone.now()
+        self.save(update_fields=['status', 'converted_at', 'updated_at'])
+        return self.compact_positions(self.class_reserved)
