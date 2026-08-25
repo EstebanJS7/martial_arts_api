@@ -4,10 +4,12 @@ from django.http import JsonResponse
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
 from users.throttling import SensitiveEndpointThrottle
+from users.permissions import IsInstructorUser
 
 from .models import Payment, QuotaConfig, PaymentTransaction
 from .serializers import (
@@ -74,15 +76,13 @@ class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
 class PaymentCreateView(generics.CreateAPIView):
     """
     Permite crear un nuevo pago. Tras la creación, se crea automáticamente el pago del próximo mes para el usuario.
-    Acceso restringido a administradores e instructores.
+    Acceso restringido a administradores (staff) e instructores.
     """
     queryset = Payment.objects.all()
     serializer_class = PaymentCreateSerializer
-    permission_classes = [permissions.IsAdminUser | permissions.IsAuthenticated]
-
-    def has_permission(self, request, view):
-        # Solo admin o instructor pueden crear pagos
-        return request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'instructor')
+    # Equivale a la lógica que estaba en has_permission (método que DRF nunca invocaba):
+    # staff/admin o instructor pueden crear pagos; estudiantes, no.
+    permission_classes = [permissions.IsAdminUser | IsInstructorUser]
 
     def perform_create(self, serializer):
         payment = serializer.save()
@@ -113,14 +113,30 @@ class QuotaConfigListView(generics.ListCreateAPIView):
 # Endpoint para verificar el estado de pagos de un usuario
 # -------------------------------
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def check_user_due_status_view(request, user_id):
     """
     Verifica si el usuario tiene pagos vencidos o cuál es el próximo pago pendiente.
+    Requiere autenticación: cada usuario solo puede consultar su propio estado,
+    salvo administradores (staff o rol 'admin').
     """
+    requester = request.user
+    requester_is_admin = requester.is_staff or (
+        hasattr(requester, 'userprofile') and requester.userprofile.role == 'admin'
+    )
+
     try:
         user = CustomUser.objects.get(id=user_id)
     except CustomUser.DoesNotExist:
         return JsonResponse({"status": "error", "message": "Usuario no encontrado."}, status=404)
+
+    # Un usuario autenticado solo consulta su propio estado de pagos
+    if requester.id != user.id and not requester_is_admin:
+        return JsonResponse(
+            {"status": "error", "message": "No tienes permiso para consultar el estado de pagos de otro usuario."},
+            status=403
+        )
 
     due_payments = Payment.objects.filter(user=user, due_date__lt=date.today(), is_fully_paid=False)
     if due_payments.exists():

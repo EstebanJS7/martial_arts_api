@@ -284,6 +284,14 @@ class EventListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
 
+    def get_permissions(self):
+        # La autorización de escritura vive en permission_classes (los retornos de
+        # perform_* son ignorados por DRF y nunca bloquean nada).
+        # En generics clásicos no existe self.action; se discrimina por método HTTP.
+        if self.request.method == 'POST':
+            return [(IsAdminUser | IsInstructorUser)()]
+        return super().get_permissions()
+
     def get_queryset(self):
         user = self.request.user
         if hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']:
@@ -294,21 +302,22 @@ class EventListCreateView(generics.ListCreateAPIView):
             return Event.objects.filter(is_verified=True).order_by('-event_date')
 
     def perform_create(self, serializer):
-        # Solo admin e instructores pueden crear eventos
-        user = self.request.user
-        if not (hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']):
-            return Response(
-                {'error': 'No tienes permisos para crear eventos'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
         serializer.save(created_by=self.request.user)
 
 class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Obtiene, actualiza o elimina un evento específico.
+    GET abierto a autenticados (estudiantes solo ven verificados);
+    PUT/PATCH/DELETE restringidos a admin/instructores.
     """
     serializer_class = EventSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        # En generics clásicos no existe self.action; se discrimina por método HTTP
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            return [(IsAdminUser | IsInstructorUser)()]
+        return super().get_permissions()
 
     def get_queryset(self):
         user = self.request.user
@@ -474,45 +483,36 @@ class EventCategoryListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
 
+    def get_permissions(self):
+        # POST (crear categoría) restringido a admin/instructores vía permission_classes;
+        # en generics clásicos no existe self.action, se discrimina por método HTTP
+        if self.request.method == 'POST':
+            return [(IsAdminUser | IsInstructorUser)()]
+        return super().get_permissions()
+
     def get_queryset(self):
         return EventCategory.objects.filter(is_active=True).order_by('name')
 
     def perform_create(self, serializer):
-        # Solo admin e instructores pueden crear categorías
-        user = self.request.user
-        if not (hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']):
-            return Response(
-                {'error': 'No tienes permisos para crear categorías de eventos'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
         serializer.save()
 
 class EventCategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Obtiene, actualiza o elimina una categoría específica.
+    GET abierto a autenticados; PUT/PATCH para admin/instructores;
+    DELETE solo para admin.
     """
     serializer_class = EventCategorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_permissions(self):
+        # Autorización por método HTTP: antes se validaba dentro de perform_update/
+        # perform_destroy, cuyos retornos DRF ignora (nunca bloqueaban nada)
+        if self.request.method == 'DELETE':
+            return [IsAdminUser()]
+        if self.request.method in ['PUT', 'PATCH']:
+            return [(IsAdminUser | IsInstructorUser)()]
+        return super().get_permissions()
+
     def get_queryset(self):
         return EventCategory.objects.all()
-
-    def perform_update(self, serializer):
-        # Solo admin e instructores pueden actualizar categorías
-        user = self.request.user
-        if not (hasattr(user, 'userprofile') and user.userprofile.role in ['admin', 'instructor']):
-            return Response(
-                {'error': 'No tienes permisos para actualizar categorías de eventos'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        # Solo admin puede eliminar categorías
-        user = self.request.user
-        if not (hasattr(user, 'userprofile') and user.userprofile.role == 'admin'):
-            return Response(
-                {'error': 'Solo los administradores pueden eliminar categorías de eventos'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        instance.delete()
